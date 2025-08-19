@@ -107,7 +107,9 @@ FastMcpPubsub::Service.listener_thread&.alive?
 - **PostgreSQL database** (for NOTIFY/LISTEN functionality)
 - **Puma web server** in cluster mode (multi-worker setup)
 
-**Note**: This gem will not work in standalone Ruby applications or non-Rails frameworks, as it relies heavily on Rails infrastructure (ActiveRecord, Railtie, Rails.logger, etc.).
+**Important Notes**:
+- This gem will not work in standalone Ruby applications or non-Rails frameworks, as it relies heavily on Rails infrastructure (ActiveRecord, Railtie, Rails.logger, etc.)
+- **PostgreSQL is mandatory** - this gem will NOT work with MySQL, SQLite, or other databases as it requires PostgreSQL's NOTIFY/LISTEN functionality. Support for other databases would require significant additional development.
 
 ## Thread Safety
 
