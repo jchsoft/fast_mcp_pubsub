@@ -6,7 +6,7 @@ module FastMcpPubsub
 
     def initialize
       @enabled = true
-      @channel_name = 'mcp_broadcast'
+      @channel_name = "mcp_broadcast"
       @auto_start = true
       @logger = defined?(Rails) ? Rails.logger : Logger.new($stdout)
       @connection_pool_size = 5

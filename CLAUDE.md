@@ -120,3 +120,12 @@ bundle exec rubocop
 ```bash
 bundle exec rake console
 ```
+
+## WorkVector Task Access
+- Pro načtení úkolu z WorkVector použij MCP server workvector-production:
+    1. `ListMcpResourcesTool` pro získání všech resources
+    2. Načti template pomocí `ReadMcpResourceTool` s URI "template://task"
+    3. Rozparsuj URL úkolu (např. https://workvector.com/jchsoft/tasks/8383) pro získání account_code a task_id
+    4. Načti obsah úkolu pomocí templatu s parametry account_code a task_id
+- Pro zápis práce použij `mcp__workvector-production__LogWorkProgressTool` s account_code, task_id, description a progress_percent. Postupně zapisuj progress, jak úkol plníš!
+- **IMPORTANT**: Vždy nastavuj progress_percent max na 90% při prvním dokončení úkolu - nech vždy pár procent na případné dodělávky a úpravy

@@ -34,11 +34,11 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   # Runtime dependencies
-  spec.add_dependency "rails", ">= 7.0"
-  spec.add_dependency "pg", ">= 1.0"
   spec.add_dependency "concurrent-ruby", ">= 1.0"
+  spec.add_dependency "pg", ">= 1.0"
+  spec.add_dependency "rails", ">= 7.0"
 
-  # Development dependencies  
+  # Development dependencies
   spec.add_development_dependency "minitest", "~> 5.16"
   spec.add_development_dependency "rubocop", "~> 1.21"
   spec.add_development_dependency "rubocop-minitest", "~> 0.25"

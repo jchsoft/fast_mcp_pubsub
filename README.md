@@ -1,6 +1,6 @@
 # FastMcp PubSub
 
-PostgreSQL NOTIFY/LISTEN clustering support for FastMcp RackTransport.
+PostgreSQL NOTIFY/LISTEN clustering support for FastMcp RackTransport in Rails applications.
 
 ## Problem
 
@@ -93,10 +93,14 @@ FastMcpPubsub::Service.listener_thread&.alive?
 
 ## Requirements
 
-- Rails 7.0+
-- PostgreSQL database
-- FastMcp gem (for the RackTransport)
-- Puma web server (for cluster mode)
+**This gem is designed exclusively for Rails applications with the following requirements:**
+
+- **Rails 7.0+** (required for Railtie integration)
+- **PostgreSQL database** (for NOTIFY/LISTEN functionality)
+- **FastMcp gem** (provides the RackTransport this gem patches)
+- **Puma web server** in cluster mode (multi-worker setup)
+
+**Note**: This gem will not work in standalone Ruby applications or non-Rails frameworks, as it relies heavily on Rails infrastructure (ActiveRecord, Railtie, Rails.logger, etc.).
 
 ## Thread Safety
 

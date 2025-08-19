@@ -9,23 +9,23 @@ if defined?(FastMcp::Transports::RackTransport)
     module Transports
       class RackTransport
         # Alias original method for local sending
-        alias_method :send_local_message, :send_message
-        
+        alias send_local_message send_message
+
         # Add running? method for identifying active instances
         def running?
           @running
         end
-        
+
         # Override send_message for broadcast via PostgreSQL
         def send_message(message)
           # Check if PubSub is enabled at runtime
           if FastMcpPubsub.config.enabled
             FastMcpPubsub.config.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
-            
+
             begin
               # Broadcast via PostgreSQL NOTIFY
               FastMcpPubsub::Service.broadcast(message)
-            rescue => e
+            rescue StandardError => e
               FastMcpPubsub.config.logger.error "RackTransport: Error broadcasting message: #{e.message}"
               # Fallback to local sending if PubSub fails
               send_local_message(message)
