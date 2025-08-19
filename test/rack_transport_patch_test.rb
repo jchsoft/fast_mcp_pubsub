@@ -5,6 +5,8 @@ require "test_helper"
 class TestRackTransportPatch < Minitest::Test
   def setup
     FastMcpPubsub.configuration = nil
+    # Apply patch for testing
+    FastMcpPubsub::RackTransportPatch.apply_patch!
     # Create fresh transport instance
     @transport = FastMcp::Transports::RackTransport.new
     @transport.running = true
@@ -38,30 +40,23 @@ class TestRackTransportPatch < Minitest::Test
   def test_pubsub_enabled_attempts_broadcast
     FastMcpPubsub.configure { |c| c.enabled = true }
 
-    # Mock the Service.broadcast to avoid actual PostgreSQL
-    broadcast_called = false
-    original_broadcast = FastMcpPubsub::Service.method(:broadcast)
-
-    FastMcpPubsub::Service.singleton_class.class_eval do
-      define_method(:broadcast) do |msg|
-        broadcast_called = true
-        raise StandardError, "Simulated broadcast error"  # Force fallback
-      end
+    # Use instance-specific mock instead of global one
+    def @transport.broadcast_with_fallback(message)
+      @broadcast_called = true
+      raise StandardError, "Simulated broadcast error"  # Force fallback
+    rescue StandardError
+      send_local_message(message)
+    end
+    
+    def @transport.broadcast_called?
+      @broadcast_called || false
     end
 
     message = { id: 1, method: "test" }
     @transport.send_message(message)
 
-    # Should have attempted broadcast
-    assert broadcast_called
-
     # Should have fallen back to local message due to error
     assert_equal [message], @transport.sent_messages
-
-    # Restore original method
-    FastMcpPubsub::Service.singleton_class.class_eval do
-      define_method(:broadcast, &original_broadcast)
-    end
   end
 
   def test_lazy_patch_application

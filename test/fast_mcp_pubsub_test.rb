@@ -14,7 +14,6 @@ class TestFastMcpPubsub < Minitest::Test
     assert_equal "mcp_broadcast", config.channel_name
     assert config.auto_start
     assert_equal 5, config.connection_pool_size
-    refute_nil config.logger
   end
 
   def test_configure_method
@@ -38,5 +37,9 @@ class TestFastMcpPubsub < Minitest::Test
 
     assert_instance_of FastMcpPubsub::Configuration, config
     assert config.enabled
+  end
+
+  def test_logger_returns_rails_logger
+    assert_equal Rails.logger, FastMcpPubsub.logger
   end
 end

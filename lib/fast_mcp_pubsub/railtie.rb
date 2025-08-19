@@ -4,17 +4,19 @@ module FastMcpPubsub
   # Rails integration for automatic FastMcpPubsub setup and Puma cluster mode hooks
   class Railtie < Rails::Railtie
     # Start listener when Rails is ready
-    config.to_prepare do
-      # Non-cluster mode initialization (rails server)
-      # Only start if we're in a web server environment
-      if (Rails.const_defined?("Server") || defined?(Puma) || ENV['MCP_SERVER_AUTO_START'] == 'true') &&
-         FastMcpPubsub.config.enabled && 
-         FastMcpPubsub.config.auto_start &&
-         !@listener_started
-        
-        Rails.logger.info "FastMcpPubsub: Starting listener for non-cluster mode"
-        FastMcpPubsub::Service.start_listener
-        @listener_started = true
+    initializer "fast_mcp_pubsub.start_listener" do |app|
+      app.config.to_prepare do
+        # Non-cluster mode initialization (rails server)
+        # Only start if we're in a web server environment
+        if (Rails.const_defined?("Server") || defined?(Puma) || ENV['MCP_SERVER_AUTO_START'] == 'true') &&
+           FastMcpPubsub.config.enabled && 
+           FastMcpPubsub.config.auto_start &&
+           !@listener_started
+          
+          Rails.logger.info "FastMcpPubsub: Starting listener for non-cluster mode"
+          FastMcpPubsub::Service.start_listener
+          @listener_started = true
+        end
       end
     end
 

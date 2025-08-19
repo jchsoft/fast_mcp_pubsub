@@ -43,6 +43,9 @@ module Rails
     super
   end
 
+  # Initialize logger for tests
+  self.logger = Logger.new(StringIO.new)
+
   class Railtie
     def self.initializer(name, options = {}, &)
       # Mock initializer registration
