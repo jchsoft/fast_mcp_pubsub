@@ -10,71 +10,65 @@ module FastMcpPubsub
 
     def self.apply_patch!
       if @patch_applied
-        log_debug "FastMcpPubsub: RackTransport patch already applied, skipping"
+        FastMcpPubsub.logger.debug "FastMcpPubsub: RackTransport patch already applied, skipping"
         return
       end
 
       unless defined?(FastMcp::Transports::RackTransport)
-        log_debug "FastMcpPubsub: FastMcp::Transports::RackTransport not defined yet, skipping patch"
+        FastMcpPubsub.logger.debug "FastMcpPubsub: FastMcp::Transports::RackTransport not defined yet, skipping patch"
         return
       end
 
-      log_info "FastMcpPubsub: Patching FastMcp::Transports::RackTransport for PostgreSQL PubSub support"
+      FastMcpPubsub.logger.info "FastMcpPubsub: Patching FastMcp::Transports::RackTransport for PostgreSQL PubSub support"
 
       patch_transport_class
       @patch_applied = true
-      log_info "FastMcpPubsub: RackTransport patch applied successfully"
+      FastMcpPubsub.logger.info "FastMcpPubsub: RackTransport patch applied successfully"
     end
 
     def self.patch_transport_class
+      add_basic_methods
+      add_send_message_override
+      add_fallback_method
+    end
+
+    def self.add_basic_methods
       FastMcp::Transports::RackTransport.class_eval do
-        # Store reference to original method if not already done
         alias_method :send_local_message, :send_message unless method_defined?(:send_local_message)
-
-        # Add running? method for identifying active instances (if not already present)
         define_method(:running?) { @running } unless method_defined?(:running?)
+      end
+    end
 
-        # Override send_message for broadcast via PostgreSQL (only if not already patched)
-        unless method_defined?(:send_message_with_pubsub)
-          # Store original send_message if it exists
-          if method_defined?(:send_message)
-            alias_method :send_message_original, :send_message
-          end
-          
-          define_method(:send_message) do |message|
-            if FastMcpPubsub.config.enabled
-              broadcast_with_fallback(message)
-            else
-              send_local_message(message)
-            end
-          end
-          
-          alias_method :send_message_with_pubsub, :send_message
+    def self.add_send_message_override
+      FastMcp::Transports::RackTransport.class_eval do
+        return if method_defined?(:send_message_with_pubsub)
+
+        alias_method :send_message_original, :send_message if method_defined?(:send_message)
+
+        define_method(:send_message) do |message|
+          FastMcpPubsub.config.enabled ? broadcast_with_fallback(message) : send_local_message(message)
         end
 
-        # Helper method for broadcasting with fallback (only if not already defined)
-        unless method_defined?(:broadcast_with_fallback)
-          define_method(:broadcast_with_fallback) do |message|
-            FastMcpPubsub.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
-            FastMcpPubsub::Service.broadcast(message)
-          rescue StandardError => e
-            FastMcpPubsub.logger.error "RackTransport: Error broadcasting message: #{e.message}"
-            send_local_message(message)
-          end
+        alias_method :send_message_with_pubsub, :send_message
+      end
+    end
+
+    def self.add_fallback_method
+      FastMcp::Transports::RackTransport.class_eval do
+        return if method_defined?(:broadcast_with_fallback)
+
+        define_method(:broadcast_with_fallback) do |message|
+          FastMcpPubsub.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
+          FastMcpPubsub::Service.broadcast(message)
+        rescue StandardError => e
+          FastMcpPubsub.logger.error "RackTransport: Error broadcasting message: #{e.message}"
+          send_local_message(message)
         end
       end
     end
 
     def self.patch_applied?
       @patch_applied
-    end
-
-    def self.log_info(message)
-      FastMcpPubsub.logger.info message
-    end
-
-    def self.log_debug(message)
-      FastMcpPubsub.logger.debug message
     end
   end
 end

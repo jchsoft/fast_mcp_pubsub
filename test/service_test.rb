@@ -27,14 +27,14 @@ class TestService < Minitest::Test
 
     # Mock the send_payload method to capture what gets sent
     sent_payloads = []
-    
+
     # Use a temporary module to avoid redefinition warnings
     mock_module = Module.new do
       define_method(:send_payload) do |payload|
         sent_payloads << JSON.parse(payload)
       end
     end
-    
+
     @service.singleton_class.prepend(mock_module)
 
     @service.broadcast(message)
@@ -96,7 +96,7 @@ class TestService < Minitest::Test
         [mock_transport]
       end
     end
-    
+
     @service.singleton_class.prepend(mock_module)
 
     # Call handle_notification (private method)

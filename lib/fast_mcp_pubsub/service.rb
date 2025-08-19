@@ -11,11 +11,7 @@ module FastMcpPubsub
       def broadcast(message)
         payload = message.to_json
 
-        if payload_too_large?(payload)
-          send_error_response(message)
-        else
-          send_payload(payload)
-        end
+        payload_too_large?(payload) ? send_error_response(message, payload) : send_payload(payload)
       rescue StandardError => e
         FastMcpPubsub.logger.error "FastMcpPubsub: Error broadcasting message: #{e.message}"
         raise
@@ -60,8 +56,8 @@ module FastMcpPubsub
         payload.bytesize > MAX_PAYLOAD_SIZE
       end
 
-      def send_error_response(message)
-        FastMcpPubsub.logger.error "FastMcpPubsub: Payload too large (#{message.to_json.bytesize} bytes > #{MAX_PAYLOAD_SIZE} bytes)"
+      def send_error_response(message, payload)
+        FastMcpPubsub.logger.error "FastMcpPubsub: Payload too large (#{payload.bytesize} bytes > #{MAX_PAYLOAD_SIZE} bytes)"
 
         error_message = {
           jsonrpc: "2.0",
@@ -76,19 +72,27 @@ module FastMcpPubsub
       end
 
       def listen_loop
-        conn = nil
         channel = FastMcpPubsub.config.channel_name
 
         begin
-          conn = ActiveRecord::Base.connection_pool.checkout
-          raw_conn = conn.raw_connection
+          ActiveRecord::Base.connection_pool.with_connection do |conn|
+            raw_conn = conn.raw_connection
 
-          FastMcpPubsub.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
-          raw_conn.async_exec("LISTEN #{channel}")
+            FastMcpPubsub.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
+            raw_conn.async_exec("LISTEN #{channel}")
 
-          loop do
-            raw_conn.wait_for_notify do |channel, pid, payload|
-              handle_notification(channel, pid, payload)
+            begin
+              loop do
+                raw_conn.wait_for_notify do |channel, pid, payload|
+                  handle_notification(channel, pid, payload)
+                end
+              end
+            ensure
+              begin
+                raw_conn.async_exec("UNLISTEN #{channel}")
+              rescue StandardError => e
+                FastMcpPubsub.logger.error "FastMcpPubsub: Error during UNLISTEN: #{e.message}"
+              end
             end
           end
         rescue StandardError => e
@@ -98,15 +102,6 @@ module FastMcpPubsub
           # Restart after error
           sleep 1
           retry
-        ensure
-          if conn
-            begin
-              conn.raw_connection.async_exec("UNLISTEN #{channel}")
-            rescue StandardError => e
-              FastMcpPubsub.logger.error "FastMcpPubsub: Error during UNLISTEN: #{e.message}"
-            end
-            ActiveRecord::Base.connection_pool.checkin(conn)
-          end
         end
       end
 

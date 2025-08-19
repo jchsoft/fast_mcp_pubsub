@@ -8,11 +8,7 @@ module FastMcpPubsub
       app.config.to_prepare do
         # Non-cluster mode initialization (rails server)
         # Only start if we're in a web server environment
-        if (Rails.const_defined?("Server") || defined?(Puma) || ENV["MCP_SERVER_AUTO_START"] == "true") &&
-           FastMcpPubsub.config.enabled &&
-           FastMcpPubsub.config.auto_start &&
-           !@listener_started
-
+        if should_start_listener?
           Rails.logger.info "FastMcpPubsub: Starting listener for non-cluster mode"
           FastMcpPubsub::Service.start_listener
           @listener_started = true
@@ -34,22 +30,33 @@ module FastMcpPubsub
           alias_method :original_load_and_bind, :load_and_bind
 
           def load_and_bind
-            result = original_load_and_bind
-
-            # Add our worker boot hook
-            if @config.options[:workers] && @config.options[:workers] > 1
-              @config.on_worker_boot do
-                if FastMcpPubsub.config.auto_start
-                  FastMcpPubsub.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
-                  FastMcpPubsub::Service.start_listener
+            original_load_and_bind.tap do
+              # Add our worker boot hook
+              if @config.options[:workers] && @config.options[:workers] > 1
+                @config.on_worker_boot do
+                  if FastMcpPubsub.config.auto_start
+                    FastMcpPubsub.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
+                    FastMcpPubsub::Service.start_listener
+                  end
                 end
               end
             end
-
-            result
           end
         end
       end
+    end
+
+    private
+
+    def should_start_listener?
+      web_server_environment? &&
+        FastMcpPubsub.config.enabled &&
+        FastMcpPubsub.config.auto_start &&
+        !@listener_started
+    end
+
+    def web_server_environment?
+      Rails.const_defined?("Server") || defined?(Puma) || ENV["MCP_SERVER_AUTO_START"] == "true"
     end
   end
 end
