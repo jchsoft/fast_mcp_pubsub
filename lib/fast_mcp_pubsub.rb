@@ -22,6 +22,11 @@ module FastMcpPubsub
   def self.config
     self.configuration ||= Configuration.new
   end
+
+  # Simple logging helper - uses Rails.logger since this gem is Rails-specific
+  def self.logger
+    Rails.logger
+  end
 end
 
 # Load patch after module is fully defined

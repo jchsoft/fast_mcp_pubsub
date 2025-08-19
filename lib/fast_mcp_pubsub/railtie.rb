@@ -20,9 +20,7 @@ module FastMcpPubsub
 
     # Apply patch to FastMcp::Transports::RackTransport after all initializers are loaded
     initializer "fast_mcp_pubsub.apply_patch", after: :load_config_initializers do
-      if FastMcpPubsub.config&.logger
-        FastMcpPubsub.config.logger.debug "FastMcpPubsub: Attempting to apply RackTransport patch"
-      end
+      FastMcpPubsub.logger.debug "FastMcpPubsub: Attempting to apply RackTransport patch"
       FastMcpPubsub::RackTransportPatch.apply_patch!
     end
 
@@ -40,9 +38,7 @@ module FastMcpPubsub
             if @config.options[:workers] && @config.options[:workers] > 1
               @config.on_worker_boot do
                 if FastMcpPubsub.config.auto_start
-                  if FastMcpPubsub.config&.logger
-                    FastMcpPubsub.config.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
-                  end
+                  FastMcpPubsub.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
                   FastMcpPubsub::Service.start_listener
                 end
               end

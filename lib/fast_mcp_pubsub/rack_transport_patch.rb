@@ -45,14 +45,10 @@ module FastMcpPubsub
 
         # Helper method for broadcasting with fallback
         define_method(:broadcast_with_fallback) do |message|
-          if FastMcpPubsub.config&.logger
-            FastMcpPubsub.config.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
-          end
+          FastMcpPubsub.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
           FastMcpPubsub::Service.broadcast(message)
         rescue StandardError => e
-          if FastMcpPubsub.config&.logger
-            FastMcpPubsub.config.logger.error "RackTransport: Error broadcasting message: #{e.message}"
-          end
+          FastMcpPubsub.logger.error "RackTransport: Error broadcasting message: #{e.message}"
           send_local_message(message)
         end
       end
@@ -65,19 +61,11 @@ module FastMcpPubsub
     private
 
     def self.log_info(message)
-      if FastMcpPubsub.config&.logger
-        FastMcpPubsub.config.logger.info message
-      else
-        puts message
-      end
+      FastMcpPubsub.logger.info message
     end
 
     def self.log_debug(message)
-      if FastMcpPubsub.config&.logger
-        FastMcpPubsub.config.logger.debug message
-      else
-        puts message if ENV['DEBUG']
-      end
+      FastMcpPubsub.logger.debug message
     end
   end
 end

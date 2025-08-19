@@ -17,9 +17,7 @@ module FastMcpPubsub
           send_payload(payload)
         end
       rescue StandardError => e
-        if FastMcpPubsub.config&.logger
-          FastMcpPubsub.config.logger.error "FastMcpPubsub: Error broadcasting message: #{e.message}"
-        end
+        FastMcpPubsub.logger.error "FastMcpPubsub: Error broadcasting message: #{e.message}"
         raise
       end
 
@@ -27,11 +25,7 @@ module FastMcpPubsub
         return unless FastMcpPubsub.config.enabled
         return if @listener_thread&.alive?
 
-        if FastMcpPubsub.config&.logger
-          FastMcpPubsub.config.logger.info "FastMcpPubsub: Starting listener thread for PID #{Process.pid}"
-        elsif defined?(Rails) && Rails.logger
-          Rails.logger.info "FastMcpPubsub: Starting listener thread for PID #{Process.pid}"
-        end
+        FastMcpPubsub.logger.info "FastMcpPubsub: Starting listener thread for PID #{Process.pid}"
 
         @listener_thread = Thread.new do
           Thread.current.name = "fast-mcp-pubsub-listener"
@@ -45,9 +39,7 @@ module FastMcpPubsub
       def stop_listener
         return unless @listener_thread&.alive?
 
-        if FastMcpPubsub.config&.logger
-          FastMcpPubsub.config.logger.info "FastMcpPubsub: Stopping listener thread for PID #{Process.pid}"
-        end
+        FastMcpPubsub.logger.info "FastMcpPubsub: Stopping listener thread for PID #{Process.pid}"
         @listener_thread.kill
         @listener_thread.join(5) # Wait max 5 seconds
         @listener_thread = nil
@@ -57,9 +49,7 @@ module FastMcpPubsub
 
       def send_payload(payload)
         channel = FastMcpPubsub.config.channel_name
-        if FastMcpPubsub.config&.logger
-          FastMcpPubsub.config.logger.debug "FastMcpPubsub: Broadcasting message to #{channel}: #{payload.bytesize} bytes"
-        end
+        FastMcpPubsub.logger.debug "FastMcpPubsub: Broadcasting message to #{channel}: #{payload.bytesize} bytes"
 
         ActiveRecord::Base.connection.execute(
           "NOTIFY #{channel}, #{ActiveRecord::Base.connection.quote(payload)}"
@@ -71,9 +61,7 @@ module FastMcpPubsub
       end
 
       def send_error_response(message)
-        if FastMcpPubsub.config&.logger
-          FastMcpPubsub.config.logger.error "FastMcpPubsub: Payload too large (#{message.to_json.bytesize} bytes > #{MAX_PAYLOAD_SIZE} bytes)"
-        end
+        FastMcpPubsub.logger.error "FastMcpPubsub: Payload too large (#{message.to_json.bytesize} bytes > #{MAX_PAYLOAD_SIZE} bytes)"
 
         error_message = {
           jsonrpc: "2.0",
@@ -95,11 +83,7 @@ module FastMcpPubsub
           conn = ActiveRecord::Base.connection_pool.checkout
           raw_conn = conn.raw_connection
 
-          if FastMcpPubsub.config&.logger
-            FastMcpPubsub.config.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
-          elsif defined?(Rails) && Rails.logger
-            Rails.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
-          end
+          FastMcpPubsub.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
           raw_conn.async_exec("LISTEN #{channel}")
 
           loop do
@@ -108,10 +92,8 @@ module FastMcpPubsub
             end
           end
         rescue StandardError => e
-          if FastMcpPubsub.config&.logger
-            FastMcpPubsub.config.logger.error "FastMcpPubsub: Listener error: #{e.message}"
-            FastMcpPubsub.config.logger.error e.backtrace.join("\n")
-          end
+          FastMcpPubsub.logger.error "FastMcpPubsub: Listener error: #{e.message}"
+          FastMcpPubsub.logger.error e.backtrace.join("\n")
 
           # Restart after error
           sleep 1
@@ -121,9 +103,7 @@ module FastMcpPubsub
             begin
               conn.raw_connection.async_exec("UNLISTEN #{channel}")
             rescue StandardError => e
-              if FastMcpPubsub.config&.logger
-                FastMcpPubsub.config.logger.error "FastMcpPubsub: Error during UNLISTEN: #{e.message}"
-              end
+              FastMcpPubsub.logger.error "FastMcpPubsub: Error during UNLISTEN: #{e.message}"
             end
             ActiveRecord::Base.connection_pool.checkin(conn)
           end
@@ -131,9 +111,7 @@ module FastMcpPubsub
       end
 
       def handle_notification(_channel, pid, payload)
-        if FastMcpPubsub.config&.logger
-          FastMcpPubsub.config.logger.debug "FastMcpPubsub: Received notification from PID #{pid}: #{payload}"
-        end
+        FastMcpPubsub.logger.debug "FastMcpPubsub: Received notification from PID #{pid}: #{payload}"
 
         begin
           message = JSON.parse(payload)
@@ -145,13 +123,9 @@ module FastMcpPubsub
             end
           end
         rescue JSON::ParserError => e
-          if FastMcpPubsub.config&.logger
-            FastMcpPubsub.config.logger.error "FastMcpPubsub: Invalid JSON payload: #{e.message}"
-          end
+          FastMcpPubsub.logger.error "FastMcpPubsub: Invalid JSON payload: #{e.message}"
         rescue StandardError => e
-          if FastMcpPubsub.config&.logger
-            FastMcpPubsub.config.logger.error "FastMcpPubsub: Error handling notification: #{e.message}"
-          end
+          FastMcpPubsub.logger.error "FastMcpPubsub: Error handling notification: #{e.message}"
         end
       end
 
