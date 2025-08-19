@@ -44,8 +44,6 @@ module FastMcpPubsub
         @listener_thread = nil
       end
 
-      protected
-
       def send_payload(payload)
         channel = FastMcpPubsub.config.channel_name
         FastMcpPubsub.config.logger.debug "FastMcpPubsub: Broadcasting message to #{channel}: #{payload.bytesize} bytes"
@@ -53,6 +51,25 @@ module FastMcpPubsub
         ActiveRecord::Base.connection.execute(
           "NOTIFY #{channel}, #{ActiveRecord::Base.connection.quote(payload)}"
         )
+      end
+
+      def payload_too_large?(payload)
+        payload.bytesize > MAX_PAYLOAD_SIZE
+      end
+
+      def send_error_response(message)
+        FastMcpPubsub.config.logger.error "FastMcpPubsub: Payload too large (#{message.to_json.bytesize} bytes > #{MAX_PAYLOAD_SIZE} bytes)"
+
+        error_message = {
+          jsonrpc: "2.0",
+          id: message[:id],
+          error: {
+            code: -32_001,
+            message: "Response too large for PostgreSQL NOTIFY. Try requesting smaller page size."
+          }
+        }
+
+        send_payload(error_message.to_json)
       end
 
       private
@@ -119,24 +136,6 @@ module FastMcpPubsub
         []
       end
 
-      def payload_too_large?(payload)
-        payload.bytesize > MAX_PAYLOAD_SIZE
-      end
-
-      def send_error_response(message)
-        FastMcpPubsub.config.logger.error "FastMcpPubsub: Payload too large (#{message.to_json.bytesize} bytes > #{MAX_PAYLOAD_SIZE} bytes)"
-
-        error_message = {
-          jsonrpc: "2.0",
-          id: message[:id],
-          error: {
-            code: -32_001,
-            message: "Response too large for PostgreSQL NOTIFY. Try requesting smaller page size."
-          }
-        }
-
-        send_payload(error_message.to_json)
-      end
     end
   end
 end
