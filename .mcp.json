@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "workvector-production": {
+      "type": "sse",
+      "name": "WorkVector Production",
+      "url": "https://workvector.com/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${WORKVECTOR_TOKEN}"
+      }
+    },
+    "filesystem-project": {
+      "type": "stdio",
+      "name": "Filesystem",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${PWD}"
+      ]
+    }
+  }
+}
