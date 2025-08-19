@@ -44,6 +44,8 @@ module FastMcpPubsub
         @listener_thread = nil
       end
 
+      private
+
       def send_payload(payload)
         channel = FastMcpPubsub.config.channel_name
         FastMcpPubsub.config.logger.debug "FastMcpPubsub: Broadcasting message to #{channel}: #{payload.bytesize} bytes"
@@ -71,8 +73,6 @@ module FastMcpPubsub
 
         send_payload(error_message.to_json)
       end
-
-      private
 
       def listen_loop
         conn = nil
