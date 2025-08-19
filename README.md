@@ -37,31 +37,49 @@ bundle install
 
 ## Usage
 
-### Basic Configuration
+### Automatic Integration
+
+**No configuration needed!** Just add the gem to your Gemfile and it works automatically.
+
+The gem will:
+- ✅ **Automatically patch** FastMcp::Transports::RackTransport during Rails initialization
+- ✅ **Start listener** automatically when Rails server starts
+- ✅ **Use Rails.logger** for logging (no configuration required)
+- ✅ **Work in both** single-worker and cluster mode
+
+### Optional Configuration
+
+If you need custom settings:
 
 ```ruby
-# config/initializers/fast_mcp_pubsub.rb
+# config/initializers/fast_mcp_pubsub.rb (optional)
 FastMcpPubsub.configure do |config|
-  config.enabled = Rails.env.production? # Enable in production cluster mode
-  config.channel_name = 'mcp_broadcast'  # PostgreSQL NOTIFY channel
-  config.auto_start = true               # Start listener automatically
-  config.logger = Rails.logger           # Use Rails logger
+  config.enabled = Rails.env.production?    # Enable only in production
+  config.channel_name = 'my_custom_channel' # Custom PostgreSQL NOTIFY channel
+  config.auto_start = true                  # Start listener automatically (default: true)
+  config.connection_pool_size = 10          # Database connection pool size
 end
 ```
 
 ### Puma Cluster Mode
 
-Works automatically with Puma cluster mode. The gem hooks into Puma's worker boot process:
+Works automatically with Puma cluster mode. **No manual configuration needed:**
 
 ```ruby
-# config/puma/production.rb
+# config/puma/production.rb - your existing config
 workers ENV.fetch("WEB_CONCURRENCY") { 2 }
 preload_app!
 
 on_worker_boot do
-  # FastMcpPubsub automatically starts listener here
+  # Your existing worker boot code
+  # FastMcpPubsub automatically starts listener in each worker
 end
 ```
+
+The gem automatically:
+- 🔧 **Detects cluster mode** and starts listeners in each worker
+- 🔄 **Handles worker restarts** and cleanup
+- 📡 **Broadcasts messages** between all workers via PostgreSQL
 
 ### Manual Control
 
@@ -88,8 +106,9 @@ FastMcpPubsub::Service.listener_thread&.alive?
 | `enabled` | `true` | Enable/disable PubSub functionality |
 | `channel_name` | `'mcp_broadcast'` | PostgreSQL NOTIFY channel name |
 | `auto_start` | `true` | Start listener automatically |
-| `logger` | `Rails.logger` | Logger instance for debugging |
 | `connection_pool_size` | `5` | Database connection pool size |
+
+**Note**: Logging is handled automatically via `FastMcpPubsub.logger` which returns `Rails.logger`.
 
 ## Error Handling
 
