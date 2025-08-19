@@ -5,13 +5,14 @@ module FastMcpPubsub
   class Railtie < Rails::Railtie
     # Start listener when Rails is ready
     initializer "fast_mcp_pubsub.start_listener" do |app|
+      railtie = self
       app.config.to_prepare do
         # Non-cluster mode initialization (rails server)
         # Only start if we're in a web server environment
-        if should_start_listener?
+        if railtie.send(:should_start_listener?)
           Rails.logger.info "FastMcpPubsub: Starting listener for non-cluster mode"
           FastMcpPubsub::Service.start_listener
-          @listener_started = true
+          railtie.instance_variable_set(:@listener_started, true)
         end
       end
     end
@@ -52,7 +53,7 @@ module FastMcpPubsub
       web_server_environment? &&
         FastMcpPubsub.config.enabled &&
         FastMcpPubsub.config.auto_start &&
-        !@listener_started
+        !instance_variable_get(:@listener_started)
     end
 
     def web_server_environment?
