@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module FastMcpPubsub
+  # Core PostgreSQL NOTIFY/LISTEN service for broadcasting MCP messages across Puma workers
   class Service
     MAX_PAYLOAD_SIZE = 7800 # PostgreSQL NOTIFY limit is 8000 bytes, leave some margin
 
@@ -135,7 +136,6 @@ module FastMcpPubsub
       rescue StandardError
         []
       end
-
     end
   end
 end

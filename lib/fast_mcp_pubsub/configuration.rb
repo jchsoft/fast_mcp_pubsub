@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module FastMcpPubsub
+  # Configuration class for FastMcpPubsub gem settings
   class Configuration
     attr_accessor :enabled, :channel_name, :auto_start, :logger, :connection_pool_size
 

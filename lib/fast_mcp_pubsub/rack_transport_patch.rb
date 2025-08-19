@@ -7,6 +7,7 @@
 if defined?(FastMcp::Transports::RackTransport)
   module FastMcp
     module Transports
+      # Extension of FastMcp::Transports::RackTransport to support cluster-mode broadcasting
       class RackTransport
         # Alias original method for local sending
         alias send_local_message send_message

@@ -44,7 +44,7 @@ module Rails
   end
 
   class Railtie
-    def self.initializer(name, options = {}, &block)
+    def self.initializer(name, options = {}, &)
       # Mock initializer registration
     end
   end

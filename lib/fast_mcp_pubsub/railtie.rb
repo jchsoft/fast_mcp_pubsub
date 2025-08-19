@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module FastMcpPubsub
+  # Rails integration for automatic FastMcpPubsub setup and Puma cluster mode hooks
   class Railtie < Rails::Railtie
     initializer "fast_mcp_pubsub.configure" do |app|
       # Non-cluster mode initialization (rails server)
@@ -16,7 +17,7 @@ module FastMcpPubsub
 
     # Puma worker boot hook for cluster mode
     initializer "fast_mcp_pubsub.puma_integration" do
-      if defined?(Puma) && defined?(Puma::Runner) && FastMcpPubsub.config.enabled
+      if defined?(Puma::Runner) && FastMcpPubsub.config.enabled
         # Register the listener to start on worker boot
         Puma::Runner.class_eval do
           alias_method :original_load_and_bind, :load_and_bind

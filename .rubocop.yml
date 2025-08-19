@@ -1,8 +1,26 @@
 AllCops:
   TargetRubyVersion: 3.1
+  NewCops: enable
+
+Layout/LineLength:
+  Max: 200
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes
 
 Style/StringLiteralsInInterpolation:
   EnforcedStyle: double_quotes
+
+# Relax some metrics for reasonable code
+Metrics/ClassLength:
+  Max: 150
+
+Metrics/MethodLength:
+  Max: 30
+
+Metrics/AbcSize:
+  Max: 35
+
+# Allow development dependencies in gemspec for gems
+Gemspec/DevelopmentDependencies:
+  Enabled: false
