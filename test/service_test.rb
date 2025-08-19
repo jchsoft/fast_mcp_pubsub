@@ -25,17 +25,17 @@ class TestService < Minitest::Test
     large_content = "x" * 8000
     message = { id: 1, method: "test", params: { content: large_content } }
 
-    # Store original private method via singleton_class
-    original_method = @service.singleton_class.instance_method(:send_payload)
-
     # Mock the send_payload method to capture what gets sent
     sent_payloads = []
-    @service.singleton_class.class_eval do
+    
+    # Use a temporary module to avoid redefinition warnings
+    mock_module = Module.new do
       define_method(:send_payload) do |payload|
         sent_payloads << JSON.parse(payload)
       end
-      private :send_payload
     end
+    
+    @service.singleton_class.prepend(mock_module)
 
     @service.broadcast(message)
 
@@ -48,12 +48,6 @@ class TestService < Minitest::Test
     assert error_response["error"]
     assert_equal(-32_001, error_response["error"]["code"])
     assert_includes error_response["error"]["message"], "too large"
-
-    # Restore original method
-    @service.singleton_class.class_eval do
-      define_method(:send_payload, original_method)
-      private :send_payload
-    end
   end
 
   def test_start_listener_when_enabled
@@ -91,31 +85,24 @@ class TestService < Minitest::Test
     message = { id: 1, method: "test" }
     payload = message.to_json
 
-    # Store original private method via singleton_class
-    original_transport_method = @service.singleton_class.instance_method(:transport_instances)
-
     # Mock transport instances
     mock_transport = Minitest::Mock.new
     parsed_message = JSON.parse(payload)
     mock_transport.expect(:send_local_message, nil, [parsed_message])
 
-    @service.singleton_class.class_eval do
+    # Use a temporary module to avoid redefinition warnings
+    mock_module = Module.new do
       define_method(:transport_instances) do
         [mock_transport]
       end
-      private :transport_instances
     end
+    
+    @service.singleton_class.prepend(mock_module)
 
     # Call handle_notification (private method)
     @service.send(:handle_notification, "test_channel", 123, payload)
 
     mock_transport.verify
-
-    # Restore original method
-    @service.singleton_class.class_eval do
-      define_method(:transport_instances, original_transport_method)
-      private :transport_instances
-    end
   end
 
   def test_handle_notification_with_invalid_json

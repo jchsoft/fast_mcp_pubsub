@@ -34,22 +34,33 @@ module FastMcpPubsub
         # Add running? method for identifying active instances (if not already present)
         define_method(:running?) { @running } unless method_defined?(:running?)
 
-        # Override send_message for broadcast via PostgreSQL
-        define_method(:send_message) do |message|
-          if FastMcpPubsub.config.enabled
-            broadcast_with_fallback(message)
-          else
-            send_local_message(message)
+        # Override send_message for broadcast via PostgreSQL (only if not already patched)
+        unless method_defined?(:send_message_with_pubsub)
+          # Store original send_message if it exists
+          if method_defined?(:send_message)
+            alias_method :send_message_original, :send_message
           end
+          
+          define_method(:send_message) do |message|
+            if FastMcpPubsub.config.enabled
+              broadcast_with_fallback(message)
+            else
+              send_local_message(message)
+            end
+          end
+          
+          alias_method :send_message_with_pubsub, :send_message
         end
 
-        # Helper method for broadcasting with fallback
-        define_method(:broadcast_with_fallback) do |message|
-          FastMcpPubsub.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
-          FastMcpPubsub::Service.broadcast(message)
-        rescue StandardError => e
-          FastMcpPubsub.logger.error "RackTransport: Error broadcasting message: #{e.message}"
-          send_local_message(message)
+        # Helper method for broadcasting with fallback (only if not already defined)
+        unless method_defined?(:broadcast_with_fallback)
+          define_method(:broadcast_with_fallback) do |message|
+            FastMcpPubsub.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
+            FastMcpPubsub::Service.broadcast(message)
+          rescue StandardError => e
+            FastMcpPubsub.logger.error "RackTransport: Error broadcasting message: #{e.message}"
+            send_local_message(message)
+          end
         end
       end
     end
