@@ -18,7 +18,7 @@ class TestRackTransportPatch < Minitest::Test
   end
 
   def test_patch_is_applied
-    assert FastMcpPubsub::RackTransportPatch.patch_applied?
+    assert_predicate FastMcpPubsub::RackTransportPatch, :patch_applied?
   end
 
   def test_transport_has_patched_methods
@@ -43,11 +43,11 @@ class TestRackTransportPatch < Minitest::Test
     # Use instance-specific mock instead of global one
     def @transport.broadcast_with_fallback(message)
       @broadcast_called = true
-      raise StandardError, "Simulated broadcast error"  # Force fallback
+      raise StandardError, "Simulated broadcast error" # Force fallback
     rescue StandardError
       send_local_message(message)
     end
-    
+
     def @transport.broadcast_called?
       @broadcast_called || false
     end
@@ -67,6 +67,6 @@ class TestRackTransportPatch < Minitest::Test
     FastMcpPubsub::RackTransportPatch.apply_patch!
 
     # Should be applied now
-    assert FastMcpPubsub::RackTransportPatch.patch_applied?
+    assert_predicate FastMcpPubsub::RackTransportPatch, :patch_applied?
   end
 end

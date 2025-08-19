@@ -58,8 +58,6 @@ module FastMcpPubsub
       @patch_applied
     end
 
-    private
-
     def self.log_info(message)
       FastMcpPubsub.logger.info message
     end
@@ -70,4 +68,4 @@ module FastMcpPubsub
   end
 end
 
-# Note: Patch is automatically applied by Railtie initializer when Rails loads
+# NOTE: Patch is automatically applied by Railtie initializer when Rails loads
