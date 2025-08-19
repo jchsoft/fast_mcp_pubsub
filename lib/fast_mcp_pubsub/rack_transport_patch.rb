@@ -5,6 +5,7 @@
 
 # Apply patch when FastMcp is available and gem is enabled
 if defined?(FastMcp::Transports::RackTransport)
+  FastMcpPubsub.config.logger.debug "FastMcpPubsub: Patching FastMcp::Transports::RackTransport for PostgreSQL PubSub support"
   module FastMcp
     module Transports
       # Extension of FastMcp::Transports::RackTransport to support cluster-mode broadcasting
@@ -39,4 +40,6 @@ if defined?(FastMcp::Transports::RackTransport)
       end
     end
   end
+else
+  FastMcpPubsub.config.logger.info "FastMcpPubsub: FastMcp::Transports::RackTransport not defined, skipping PubSub patch"
 end
