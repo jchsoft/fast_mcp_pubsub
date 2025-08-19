@@ -16,7 +16,7 @@ module FastMcpPubsub
 
     # Puma worker boot hook for cluster mode
     initializer "fast_mcp_pubsub.puma_integration" do
-      if defined?(Puma) && FastMcpPubsub.config.enabled
+      if defined?(Puma) && defined?(Puma::Runner) && FastMcpPubsub.config.enabled
         # Register the listener to start on worker boot
         Puma::Runner.class_eval do
           alias_method :original_load_and_bind, :load_and_bind
