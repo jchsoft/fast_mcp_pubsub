@@ -122,10 +122,10 @@ bundle exec rake console
 ```
 
 ## WorkVector Task Access
-- Pro načtení úkolu z WorkVector použij MCP server workvector-production:
-    1. `ListMcpResourcesTool` pro získání všech resources
-    2. Načti template pomocí `ReadMcpResourceTool` s URI "template://task"
-    3. Rozparsuj URL úkolu (např. https://workvector.com/jchsoft/tasks/8383) pro získání account_code a task_id
-    4. Načti obsah úkolu pomocí templatu s parametry account_code a task_id
-- Pro zápis práce použij `mcp__workvector-production__LogWorkProgressTool` s account_code, task_id, description a progress_percent. Postupně zapisuj progress, jak úkol plníš!
-- **IMPORTANT**: Vždy nastavuj progress_percent max na 90% při prvním dokončení úkolu - nech vždy pár procent na případné dodělávky a úpravy
+- To read a task from WorkVector, use the workvector-production MCP server:
+    1. Use `ListMcpResourcesTool` to get all available resources
+    2. Load template using `ReadMcpResourceTool` with URI "template://task"
+    3. Parse the task URL (e.g., https://workvector.com/jchsoft/tasks/8383) to extract account_code and task_id
+    4. Load task content using the template with account_code and task_id parameters
+- To log work progress, use `mcp__workvector-production__LogWorkProgressTool` with account_code, task_id, description and progress_percent. Log progress incrementally as you work on the task!
+- **IMPORTANT**: Always set progress_percent to max 90% on first task completion - leave a few percent for potential follow-ups and adjustments
