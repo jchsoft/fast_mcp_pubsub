@@ -3,8 +3,6 @@
 require_relative "fast_mcp_pubsub/version"
 require_relative "fast_mcp_pubsub/configuration"
 require_relative "fast_mcp_pubsub/service"
-require_relative "fast_mcp_pubsub/rack_transport_patch"
-require_relative "fast_mcp_pubsub/railtie" if defined?(Rails)
 
 # PostgreSQL NOTIFY/LISTEN clustering support for FastMcp RackTransport.
 # Enables FastMcp RackTransport to work in cluster mode by broadcasting messages
@@ -25,3 +23,7 @@ module FastMcpPubsub
     self.configuration ||= Configuration.new
   end
 end
+
+# Load patch after module is fully defined
+require_relative "fast_mcp_pubsub/rack_transport_patch"
+require_relative "fast_mcp_pubsub/railtie" if defined?(Rails)

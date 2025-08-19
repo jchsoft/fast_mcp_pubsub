@@ -118,6 +118,7 @@ module FastMcpPubsub
 
           # Find active RackTransport instances and send to local clients
           if defined?(FastMcp::Transports::RackTransport)
+            FastMcpPubsub::RackTransportPatch.apply_patch!
             transport_instances.each do |transport|
               transport.send_local_message(message)
             end
