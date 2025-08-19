@@ -1,6 +1,8 @@
 # FastMcp PubSub
 
-PostgreSQL NOTIFY/LISTEN clustering support for FastMcp RackTransport in Rails applications.
+**Multi-worker cluster support extension for [fast-mcp](https://github.com/yjacquin/fast-mcp) gem.**
+
+This gem extends the [FastMcp](https://github.com/yjacquin/fast-mcp) gem to work with multiple Puma workers by adding PostgreSQL NOTIFY/LISTEN clustering support for `FastMcp::Transports::RackTransport` in Rails applications.
 
 ## Problem
 
@@ -16,10 +18,13 @@ This gem provides PostgreSQL NOTIFY/LISTEN system for broadcasting messages betw
 
 ## Installation
 
-Add to your application's Gemfile:
+**Prerequisites**: This gem requires the [fast-mcp](https://github.com/yjacquin/fast-mcp) gem to be installed first.
+
+Add both gems to your application's Gemfile:
 
 ```ruby
-gem 'fast_mcp_pubsub'
+gem 'fast-mcp', '~> 1.5.0'      # Required base gem
+gem 'fast_mcp_pubsub'           # This extension
 ```
 
 And then execute:
@@ -27,6 +32,8 @@ And then execute:
 ```bash
 bundle install
 ```
+
+**Note**: The `fast-mcp` gem provides the core MCP (Model Context Protocol) server functionality, while this gem extends it with multi-worker support.
 
 ## Usage
 
@@ -93,11 +100,11 @@ FastMcpPubsub::Service.listener_thread&.alive?
 
 ## Requirements
 
-**This gem is designed exclusively for Rails applications with the following requirements:**
+**This gem is an extension for Rails applications using FastMcp and requires:**
 
+- **[FastMcp gem](https://github.com/yjacquin/fast-mcp)** ~> 1.5.0 (the base MCP server this gem extends)
 - **Rails 7.0+** (required for Railtie integration)
 - **PostgreSQL database** (for NOTIFY/LISTEN functionality)
-- **FastMcp gem** (provides the RackTransport this gem patches)
 - **Puma web server** in cluster mode (multi-worker setup)
 
 **Note**: This gem will not work in standalone Ruby applications or non-Rails frameworks, as it relies heavily on Rails infrastructure (ActiveRecord, Railtie, Rails.logger, etc.).
