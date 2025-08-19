@@ -1,6 +1,10 @@
 AllCops:
   TargetRubyVersion: 3.1
   NewCops: enable
+  SuggestExtensions: false
+
+plugins:
+  - rubocop-minitest
 
 Layout/LineLength:
   Max: 200

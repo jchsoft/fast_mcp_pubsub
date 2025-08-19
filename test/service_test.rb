@@ -59,7 +59,7 @@ class TestService < Minitest::Test
   def test_start_listener_when_enabled
     FastMcpPubsub.configure { |c| c.enabled = true }
 
-    refute @service.listener_thread&.alive?
+    refute_predicate @service.listener_thread, :alive?
 
     @service.start_listener
 
@@ -74,7 +74,7 @@ class TestService < Minitest::Test
 
     @service.start_listener
 
-    refute @service.listener_thread&.alive?
+    refute_predicate @service.listener_thread, :alive?
   end
 
   def test_stop_listener
@@ -84,7 +84,7 @@ class TestService < Minitest::Test
     @service.stop_listener
 
     # Thread should be stopped
-    refute @service.listener_thread&.alive?
+    refute_predicate @service.listener_thread, :alive?
   end
 
   def test_handle_notification_with_valid_json
