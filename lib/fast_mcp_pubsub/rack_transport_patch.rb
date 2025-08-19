@@ -9,14 +9,21 @@ module FastMcpPubsub
     @patch_applied = false
 
     def self.apply_patch!
-      return if @patch_applied
-      return unless defined?(FastMcp::Transports::RackTransport)
+      if @patch_applied
+        log_debug "FastMcpPubsub: RackTransport patch already applied, skipping"
+        return
+      end
 
-      FastMcpPubsub.config.logger.debug "FastMcpPubsub: Patching FastMcp::Transports::RackTransport for PostgreSQL PubSub support"
+      unless defined?(FastMcp::Transports::RackTransport)
+        log_debug "FastMcpPubsub: FastMcp::Transports::RackTransport not defined yet, skipping patch"
+        return
+      end
+
+      log_info "FastMcpPubsub: Patching FastMcp::Transports::RackTransport for PostgreSQL PubSub support"
 
       patch_transport_class
       @patch_applied = true
-      FastMcpPubsub.config.logger.debug "FastMcpPubsub: RackTransport patch applied successfully"
+      log_info "FastMcpPubsub: RackTransport patch applied successfully"
     end
 
     def self.patch_transport_class
@@ -38,10 +45,14 @@ module FastMcpPubsub
 
         # Helper method for broadcasting with fallback
         define_method(:broadcast_with_fallback) do |message|
-          FastMcpPubsub.config.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
+          if FastMcpPubsub.config&.logger
+            FastMcpPubsub.config.logger.debug "RackTransport: Broadcasting message via PostgreSQL PubSub"
+          end
           FastMcpPubsub::Service.broadcast(message)
         rescue StandardError => e
-          FastMcpPubsub.config.logger.error "RackTransport: Error broadcasting message: #{e.message}"
+          if FastMcpPubsub.config&.logger
+            FastMcpPubsub.config.logger.error "RackTransport: Error broadcasting message: #{e.message}"
+          end
           send_local_message(message)
         end
       end
@@ -50,8 +61,25 @@ module FastMcpPubsub
     def self.patch_applied?
       @patch_applied
     end
+
+    private
+
+    def self.log_info(message)
+      if FastMcpPubsub.config&.logger
+        FastMcpPubsub.config.logger.info message
+      else
+        puts message
+      end
+    end
+
+    def self.log_debug(message)
+      if FastMcpPubsub.config&.logger
+        FastMcpPubsub.config.logger.debug message
+      else
+        puts message if ENV['DEBUG']
+      end
+    end
   end
 end
 
-# Try to apply patch immediately if FastMcp is already loaded
-FastMcpPubsub::RackTransportPatch.apply_patch!
+# Note: Patch is automatically applied by Railtie initializer when Rails loads

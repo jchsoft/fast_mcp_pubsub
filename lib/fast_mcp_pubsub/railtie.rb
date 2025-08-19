@@ -3,16 +3,27 @@
 module FastMcpPubsub
   # Rails integration for automatic FastMcpPubsub setup and Puma cluster mode hooks
   class Railtie < Rails::Railtie
-    initializer "fast_mcp_pubsub.configure" do |app|
+    # Start listener when Rails is ready
+    config.to_prepare do
       # Non-cluster mode initialization (rails server)
-      if Rails.const_defined?("Server")
-        app.config.after_initialize do
-          if FastMcpPubsub.config.enabled && FastMcpPubsub.config.auto_start
-            FastMcpPubsub.config.logger.info "FastMcpPubsub: Starting listener for non-cluster mode"
-            FastMcpPubsub::Service.start_listener
-          end
-        end
+      # Only start if we're in a web server environment
+      if (Rails.const_defined?("Server") || defined?(Puma) || ENV['MCP_SERVER_AUTO_START'] == 'true') &&
+         FastMcpPubsub.config.enabled && 
+         FastMcpPubsub.config.auto_start &&
+         !@listener_started
+        
+        Rails.logger.info "FastMcpPubsub: Starting listener for non-cluster mode"
+        FastMcpPubsub::Service.start_listener
+        @listener_started = true
       end
+    end
+
+    # Apply patch to FastMcp::Transports::RackTransport after all initializers are loaded
+    initializer "fast_mcp_pubsub.apply_patch", after: :load_config_initializers do
+      if FastMcpPubsub.config&.logger
+        FastMcpPubsub.config.logger.debug "FastMcpPubsub: Attempting to apply RackTransport patch"
+      end
+      FastMcpPubsub::RackTransportPatch.apply_patch!
     end
 
     # Puma worker boot hook for cluster mode
@@ -29,7 +40,9 @@ module FastMcpPubsub
             if @config.options[:workers] && @config.options[:workers] > 1
               @config.on_worker_boot do
                 if FastMcpPubsub.config.auto_start
-                  FastMcpPubsub.config.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
+                  if FastMcpPubsub.config&.logger
+                    FastMcpPubsub.config.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
+                  end
                   FastMcpPubsub::Service.start_listener
                 end
               end
