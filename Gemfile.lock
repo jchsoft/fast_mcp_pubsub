@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    fast_mcp_pubsub (1.0.3)
+    fast_mcp_pubsub (1.0.4)
       concurrent-ruby (>= 1.0)
       pg (>= 1.0)
       rails (>= 7.0)
