@@ -9,10 +9,14 @@ module FastMcpPubsub
       app.config.to_prepare do
         # Non-cluster mode initialization (rails server)
         # Only start if we're in a web server environment
+        Rails.logger.info "FastMcpPubsub: Checking listener startup conditions - cluster_mode: #{railtie.send(:cluster_mode?)}, should_start: #{railtie.send(:should_start_listener?)}"
+
         if railtie.send(:should_start_listener?)
           Rails.logger.info "FastMcpPubsub: Starting listener for non-cluster mode"
           FastMcpPubsub::Service.start_listener
           railtie.instance_variable_set(:@listener_started, true)
+        else
+          Rails.logger.info "FastMcpPubsub: Not starting listener in master process (cluster mode detected or conditions not met)"
         end
       end
     end
@@ -25,39 +29,19 @@ module FastMcpPubsub
 
     # Puma worker boot hook for cluster mode
     initializer "fast_mcp_pubsub.puma_integration" do
-      FastMcpPubsub.logger.info "FastMcpPubsub: Puma integration initializer - enabled: #{FastMcpPubsub.config.enabled}, auto_start: #{FastMcpPubsub.config.auto_start}, Puma defined: #{defined?(Puma::Runner)}"
+      FastMcpPubsub.logger.info "FastMcpPubsub: Puma integration initializer - enabled: #{FastMcpPubsub.config.enabled}, auto_start: #{FastMcpPubsub.config.auto_start}"
 
-      if defined?(Puma::Runner) && FastMcpPubsub.config.enabled
-        FastMcpPubsub.logger.info "FastMcpPubsub: Setting up Puma integration"
-        # Register the listener to start on worker boot
-        Puma::Runner.class_eval do
-          alias_method :original_load_and_bind, :load_and_bind
+      # Only register worker boot hook if enabled and auto_start is true
+      if FastMcpPubsub.config.enabled && FastMcpPubsub.config.auto_start
+        FastMcpPubsub.logger.info "FastMcpPubsub: Registering worker boot callback"
 
-          def load_and_bind
-            original_load_and_bind.tap do
-              # Add our worker boot hook
-              workers = @config.options[:workers]
-              FastMcpPubsub.logger.info "FastMcpPubsub: Puma workers configured: #{workers}"
-
-              if workers && workers > 1
-                FastMcpPubsub.logger.info "FastMcpPubsub: Adding worker boot hook for cluster mode"
-                @config.on_worker_boot do
-                  FastMcpPubsub.logger.info "FastMcpPubsub: Worker boot hook executing for PID #{Process.pid}, auto_start: #{FastMcpPubsub.config.auto_start}"
-                  if FastMcpPubsub.config.auto_start
-                    FastMcpPubsub.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
-                    FastMcpPubsub::Service.start_listener
-                  else
-                    FastMcpPubsub.logger.info "FastMcpPubsub: Not starting listener - auto_start is disabled for PID #{Process.pid}"
-                  end
-                end
-              else
-                FastMcpPubsub.logger.info "FastMcpPubsub: Not cluster mode, skipping worker boot hook"
-              end
-            end
-          end
+        # Register a global hook for worker boot
+        Rails.application.config.after_initialize do
+          # Register the hook with ActiveSupport::Callbacks if available, or use Puma directly
+          FastMcpPubsub.register_worker_boot_hook
         end
       else
-        FastMcpPubsub.logger.info "FastMcpPubsub: Puma integration skipped - Puma not defined or disabled"
+        FastMcpPubsub.logger.info "FastMcpPubsub: Worker boot hook registration skipped - disabled or auto_start false"
       end
     end
 
@@ -65,6 +49,7 @@ module FastMcpPubsub
 
     def should_start_listener?
       web_server_environment? &&
+        !cluster_mode? &&
         FastMcpPubsub.config.enabled &&
         FastMcpPubsub.config.auto_start &&
         !instance_variable_get(:@listener_started)
@@ -72,6 +57,12 @@ module FastMcpPubsub
 
     def web_server_environment?
       Rails.const_defined?("Server") || defined?(Puma) || ENV["MCP_SERVER_AUTO_START"] == "true"
+    end
+
+    def cluster_mode?
+      # Check if Puma is running in cluster mode (multiple workers)
+      defined?(Puma.cli_config) &&
+        Puma.cli_config&.options&.dig(:workers).to_i > 1
     end
   end
 end

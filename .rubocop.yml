@@ -28,3 +28,13 @@ Metrics/AbcSize:
 # Allow development dependencies in gemspec for gems
 Gemspec/DevelopmentDependencies:
   Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+# Allow longer blocks for configuration and setup
+Metrics/BlockLength:
+  Exclude:
+    - "test/**/*"
+    - "*.gemspec"
+    - "lib/fast_mcp_pubsub/railtie.rb"  # Debug logging temporarily increases block length
