@@ -18,8 +18,15 @@ module FastMcpPubsub
       end
 
       def start_listener
-        return unless FastMcpPubsub.config.enabled
-        return if @listener_thread&.alive?
+        unless FastMcpPubsub.config.enabled
+          FastMcpPubsub.logger.info "FastMcpPubsub: Not starting listener - disabled in config for PID #{Process.pid}"
+          return
+        end
+
+        if @listener_thread&.alive?
+          FastMcpPubsub.logger.info "FastMcpPubsub: Listener already running for PID #{Process.pid}"
+          return
+        end
 
         FastMcpPubsub.logger.info "FastMcpPubsub: Starting listener thread for PID #{Process.pid}"
 

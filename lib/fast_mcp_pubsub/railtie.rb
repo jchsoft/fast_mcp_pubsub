@@ -25,7 +25,10 @@ module FastMcpPubsub
 
     # Puma worker boot hook for cluster mode
     initializer "fast_mcp_pubsub.puma_integration" do
+      FastMcpPubsub.logger.info "FastMcpPubsub: Puma integration initializer - enabled: #{FastMcpPubsub.config.enabled}, auto_start: #{FastMcpPubsub.config.auto_start}, Puma defined: #{defined?(Puma::Runner)}"
+
       if defined?(Puma::Runner) && FastMcpPubsub.config.enabled
+        FastMcpPubsub.logger.info "FastMcpPubsub: Setting up Puma integration"
         # Register the listener to start on worker boot
         Puma::Runner.class_eval do
           alias_method :original_load_and_bind, :load_and_bind
@@ -33,17 +36,28 @@ module FastMcpPubsub
           def load_and_bind
             original_load_and_bind.tap do
               # Add our worker boot hook
-              if @config.options[:workers] && @config.options[:workers] > 1
+              workers = @config.options[:workers]
+              FastMcpPubsub.logger.info "FastMcpPubsub: Puma workers configured: #{workers}"
+
+              if workers && workers > 1
+                FastMcpPubsub.logger.info "FastMcpPubsub: Adding worker boot hook for cluster mode"
                 @config.on_worker_boot do
+                  FastMcpPubsub.logger.info "FastMcpPubsub: Worker boot hook executing for PID #{Process.pid}, auto_start: #{FastMcpPubsub.config.auto_start}"
                   if FastMcpPubsub.config.auto_start
                     FastMcpPubsub.logger.info "FastMcpPubsub: Starting PubSub listener for cluster mode worker #{Process.pid}"
                     FastMcpPubsub::Service.start_listener
+                  else
+                    FastMcpPubsub.logger.info "FastMcpPubsub: Not starting listener - auto_start is disabled for PID #{Process.pid}"
                   end
                 end
+              else
+                FastMcpPubsub.logger.info "FastMcpPubsub: Not cluster mode, skipping worker boot hook"
               end
             end
           end
         end
+      else
+        FastMcpPubsub.logger.info "FastMcpPubsub: Puma integration skipped - Puma not defined or disabled"
       end
     end
 
