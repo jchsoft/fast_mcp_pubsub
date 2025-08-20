@@ -62,7 +62,7 @@ module FastMcpPubsub
     def cluster_mode?
       # Check if Puma is running in cluster mode (multiple workers)
       defined?(Puma.cli_config) &&
-        Puma.cli_config&.options&.dig(:workers).to_i > 1
+        Puma.cli_config&.options&.[](:workers).to_i > 1
     end
   end
 end
