@@ -113,7 +113,11 @@ module FastMcpPubsub
 
           # Find active RackTransport instances and send to local clients
           if defined?(FastMcp::Transports::RackTransport)
-            transport_instances.each do |transport|
+            transports = transport_instances
+            FastMcpPubsub.logger.debug "FastMcpPubsub: Found #{transports.size} transport instances"
+
+            transports.each do |transport|
+              FastMcpPubsub.logger.debug "FastMcpPubsub: Sending message to transport #{transport.object_id}"
               transport.send_local_message(message)
             end
           end
@@ -125,9 +129,8 @@ module FastMcpPubsub
       end
 
       def transport_instances
-        # Find all active RackTransport instances
-        # This is a bit of a hack, but it works for our use case
-        ObjectSpace.each_object(FastMcp::Transports::RackTransport).select(&:running?)
+        # Find all RackTransport instances - don't filter by running? since it's not reliably implemented
+        ObjectSpace.each_object(FastMcp::Transports::RackTransport).to_a
       rescue StandardError
         []
       end
