@@ -27,21 +27,6 @@ module FastMcpPubsub
   def self.logger
     Rails.logger
   end
-
-  # Register Puma worker boot hook for cluster mode
-  def self.register_worker_boot_hook
-    if defined?(Puma.cli_config)
-      logger.info "FastMcpPubsub: Registering Puma worker boot hook"
-
-      # Use Puma's built-in worker boot hook
-      Puma.cli_config&.options&.fetch(:on_worker_boot, [])&.push(proc do
-        logger.info "FastMcpPubsub: Worker boot hook executing for PID #{Process.pid}"
-        Service.start_listener if config.enabled && config.auto_start
-      end)
-    else
-      logger.warn "FastMcpPubsub: Could not register worker boot hook - Puma not available"
-    end
-  end
 end
 
 # Load patch after module is fully defined

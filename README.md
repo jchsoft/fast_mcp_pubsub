@@ -63,23 +63,28 @@ end
 
 ### Puma Cluster Mode
 
-Works automatically with Puma cluster mode. **No manual configuration needed:**
+For cluster mode (multiple workers), you need to manually start the listener in each worker process:
 
 ```ruby
-# config/puma/production.rb - your existing config
+# config/puma/production.rb
 workers ENV.fetch("WEB_CONCURRENCY") { 2 }
 preload_app!
 
 on_worker_boot do
-  # Your existing worker boot code
-  # FastMcpPubsub automatically starts listener in each worker
+  Rails.logger.info "MCP Transport: Starting PubSub listener for cluster mode worker #{Process.pid}"
+  
+  # Start FastMcpPubsub listener in each worker
+  FastMcpPubsub::Service.start_listener
+  
+  # Your other worker boot code...
 end
 ```
 
-The gem automatically:
-- 🔧 **Detects cluster mode** and starts listeners in each worker
-- 🔄 **Handles worker restarts** and cleanup
-- 📡 **Broadcasts messages** between all workers via PostgreSQL
+**Why manual setup is required:**
+- 🔧 **Master process** automatically detects cluster mode and skips listener startup  
+- 👷 **Worker processes** need explicit listener startup in `on_worker_boot` hook
+- 📡 **Each worker** gets its own listener thread for receiving broadcasts
+- 🔄 **Automatic cleanup** happens on worker shutdown
 
 ### Manual Control
 
