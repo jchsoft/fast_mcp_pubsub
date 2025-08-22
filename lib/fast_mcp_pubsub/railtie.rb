@@ -41,7 +41,7 @@ module FastMcpPubsub
     end
 
     def web_server_environment?
-      Rails.const_defined?("Server") || defined?(Puma) || ENV["MCP_SERVER_AUTO_START"] == "true"
+      defined?(Rails::Server) || defined?(Puma) || ENV["MCP_SERVER_AUTO_START"] == "true"
     end
 
     def cluster_mode?
