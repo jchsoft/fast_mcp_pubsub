@@ -15,20 +15,6 @@ FastMcp PubSub provides PostgreSQL NOTIFY/LISTEN clustering support for FastMcp 
 - Comments and tests in English
 - KEEP CODE DRY (Don't Repeat Yourself)
 
-### Ruby/Rails Philosophy
-- **DO IT RUBY WAY OR RAILS WAY** - it's not Python, Java or PHP!
-- Strong use of Ruby metaprogramming techniques
-- code line should look like human sentence (e.g. `3.times do` not `for i in 0..2 do` - Ruby syntax reads like English)
-- keep code raising exceptions when it's programmer's fault - DO NOT validate method parameters, expect them to be correct! Only validate user input
-- do not repeat name of parameter in method name (e.g. `def create_new_user_from_user(user)` should be `def create_new_user_from(user)`)
-- do not use extra variable if used only once - saves memory and reduces GC pressure under high traffic (e.g. `user = User.find(params[:id]); user.update(...)` should be `User.find(params[:id]).update(...)`) - use `.tap do` for chaining when you need to use the object later
-- use metaprogramming instead of case statements (e.g. `self.send(method_name, params)` instead of `case method_name; when "find_slot"...` - let Ruby handle method dispatch and NoMethodError)
-- PREFER FUNCTIONAL STYLE: use flat_map, map, select over loops and temp variables (e.g. `items.flat_map(&:children).uniq` not `results = []; items.each { |i| results.concat(i.children) }; results.uniq`)
-- USE PATTERN MATCHING: Ruby 3.0+ `case/in` for complex conditionals instead of if/elsif chains - more expressive and catches unhandled cases
-- ONE CLEAR RESPONSIBILITY: each method should do one thing well - if method has "and" in description, split it (e.g. `normalize_and_search` → `normalize` + `search`)
-- FOLLOW KISS PRINCIPLE: Keep It Simple, Stupid - avoid unnecessary complexity, use simple solutions first
-- ALWAYS TEST YOUR CODE
-
 ### Error Handling
 - Use meaningful exception classes (not generic StandardError)
 - Log errors with context using the configured logger
@@ -120,12 +106,3 @@ bundle exec rubocop
 ```bash
 bundle exec rake console
 ```
-
-## WorkVector Task Access
-- To read a task from WorkVector, use the workvector-production MCP server:
-    1. Use `ListMcpResourcesTool` to get all available resources
-    2. Load template using `ReadMcpResourceTool` with URI "template://task"
-    3. Parse the task URL (e.g., https://workvector.com/jchsoft/tasks/8383) to extract account_code and task_id
-    4. Load task content using the template with account_code and task_id parameters
-- To log work progress, use `mcp__workvector-production__LogWorkProgressTool` with account_code, task_id, description and progress_percent. Log progress incrementally as you work on the task!
-- **IMPORTANT**: Always set progress_percent to max 90% on first task completion - leave a few percent for potential follow-ups and adjustments

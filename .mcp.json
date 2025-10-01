@@ -17,6 +17,14 @@
         "@modelcontextprotocol/server-filesystem",
         "${PWD}"
       ]
+    },
+    "llmmn-production": {
+      "type": "sse",
+      "name": "LLM Memory Notes Production",
+      "url": "https://llm-memory.com/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${LLMMN_TOKEN}"
+      }
     }
   }
 }
