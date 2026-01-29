@@ -47,13 +47,21 @@ module FastMcpPubsub
         @shutdown_requested = true
 
         # Cancel wait_for_notify to wake up the thread
-        @dedicated_connection&.cancel rescue nil
+        begin
+          @dedicated_connection&.cancel
+        rescue StandardError
+          nil
+        end
 
         @listener_thread.join(5) # Wait max 5 seconds
         @listener_thread = nil
 
         # Close dedicated connection
-        @dedicated_connection&.close rescue nil
+        begin
+          @dedicated_connection&.close
+        rescue StandardError
+          nil
+        end
         @dedicated_connection = nil
         @shutdown_requested = false
       end
@@ -101,7 +109,7 @@ module FastMcpPubsub
             break if @shutdown_requested
 
             @dedicated_connection.wait_for_notify(1) do |_channel, pid, payload|
-              handle_notification(_channel, pid, payload)
+              handle_notification(pid, payload)
             end
           end
         rescue StandardError => e
@@ -133,7 +141,7 @@ module FastMcpPubsub
         )
       end
 
-      def handle_notification(_channel, pid, payload)
+      def handle_notification(pid, payload)
         FastMcpPubsub.logger.debug "FastMcpPubsub: Received notification from PID #{pid}: #{payload}"
 
         begin

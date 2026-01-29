@@ -106,3 +106,10 @@ bundle exec rubocop
 ```bash
 bundle exec rake console
 ```
+
+### Before Push (IMPORTANT!)
+Always run full CI check before pushing:
+```bash
+bundle exec rake  # Runs tests + RuboCop
+```
+This prevents CI failures from RuboCop offenses or test errors.

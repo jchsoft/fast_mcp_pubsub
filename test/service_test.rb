@@ -100,7 +100,7 @@ class TestService < Minitest::Test
     @service.singleton_class.prepend(mock_module)
 
     # Call handle_notification (private method)
-    @service.send(:handle_notification, "test_channel", 123, payload)
+    @service.send(:handle_notification, 123, payload)
 
     mock_transport.verify
   end
@@ -108,7 +108,7 @@ class TestService < Minitest::Test
   def test_handle_notification_with_invalid_json
     # Should not raise error with invalid JSON
     assert_silent do
-      @service.send(:handle_notification, "test_channel", 123, "invalid json")
+      @service.send(:handle_notification, 123, "invalid json")
     end
   end
 
