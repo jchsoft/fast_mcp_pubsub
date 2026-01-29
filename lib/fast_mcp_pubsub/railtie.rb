@@ -27,6 +27,27 @@ module FastMcpPubsub
       FastMcpPubsub::RackTransportPatch.apply_patch!
     end
 
+    # Handle hot-reload in development mode - stop/restart listener to avoid connection pool issues
+    initializer "fast_mcp_pubsub.reloader_hooks" do |app|
+      railtie = self
+
+      # Stop listener before hot-reload to release dedicated connection
+      app.reloader.before_class_unload do
+        if FastMcpPubsub::Service.listener_thread&.alive?
+          Rails.logger.info "FastMcpPubsub: Stopping listener before code reload"
+          FastMcpPubsub::Service.stop_listener
+        end
+      end
+
+      # Restart listener after hot-reload completes
+      app.reloader.to_complete do
+        if railtie.send(:should_restart_listener?)
+          Rails.logger.info "FastMcpPubsub: Restarting listener after code reload"
+          FastMcpPubsub::Service.start_listener
+        end
+      end
+    end
+
     # NOTE: For cluster mode, add FastMcpPubsub::Service.start_listener to your
     # on_worker_boot hook in config/puma/production.rb
 
@@ -38,6 +59,15 @@ module FastMcpPubsub
         FastMcpPubsub.config.enabled &&
         FastMcpPubsub.config.auto_start &&
         !instance_variable_get(:@listener_started)
+    end
+
+    def should_restart_listener?
+      # For reloader - don't check @listener_started, just basic conditions
+      web_server_environment? &&
+        !cluster_mode? &&
+        FastMcpPubsub.config.enabled &&
+        FastMcpPubsub.config.auto_start &&
+        !FastMcpPubsub::Service.listener_thread&.alive?
     end
 
     def web_server_environment?

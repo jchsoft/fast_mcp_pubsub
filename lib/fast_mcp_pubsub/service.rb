@@ -6,7 +6,8 @@ module FastMcpPubsub
     MAX_PAYLOAD_SIZE = 7800 # PostgreSQL NOTIFY limit is 8000 bytes, leave some margin
 
     class << self
-      attr_reader :listener_thread
+      attr_reader :listener_thread, :dedicated_connection
+      attr_accessor :shutdown_requested
 
       def broadcast(message)
         payload = message.to_json
@@ -43,9 +44,18 @@ module FastMcpPubsub
         return unless @listener_thread&.alive?
 
         FastMcpPubsub.logger.info "FastMcpPubsub: Stopping listener thread for PID #{Process.pid}"
-        @listener_thread.kill
+        @shutdown_requested = true
+
+        # Cancel wait_for_notify to wake up the thread
+        @dedicated_connection&.cancel rescue nil
+
         @listener_thread.join(5) # Wait max 5 seconds
         @listener_thread = nil
+
+        # Close dedicated connection
+        @dedicated_connection&.close rescue nil
+        @dedicated_connection = nil
+        @shutdown_requested = false
       end
 
       private
@@ -82,34 +92,45 @@ module FastMcpPubsub
         channel = FastMcpPubsub.config.channel_name
 
         begin
-          ActiveRecord::Base.connection_pool.with_connection do |conn|
-            raw_conn = conn.raw_connection
+          @dedicated_connection = create_dedicated_connection
 
-            FastMcpPubsub.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
-            raw_conn.async_exec("LISTEN #{channel}")
+          FastMcpPubsub.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
+          @dedicated_connection.exec("LISTEN #{channel}")
 
-            begin
-              loop do
-                raw_conn.wait_for_notify do |channel, pid, payload|
-                  handle_notification(channel, pid, payload)
-                end
-              end
-            ensure
-              begin
-                raw_conn.async_exec("UNLISTEN #{channel}")
-              rescue StandardError => e
-                FastMcpPubsub.logger.error "FastMcpPubsub: Error during UNLISTEN: #{e.message}"
-              end
+          loop do
+            break if @shutdown_requested
+
+            @dedicated_connection.wait_for_notify(1) do |_channel, pid, payload|
+              handle_notification(_channel, pid, payload)
             end
           end
         rescue StandardError => e
-          FastMcpPubsub.logger.error "FastMcpPubsub: Listener error: #{e.message}"
-          FastMcpPubsub.logger.error e.backtrace.join("\n")
-
-          # Restart after error
-          sleep 1
-          retry
+          unless @shutdown_requested
+            FastMcpPubsub.logger.error "FastMcpPubsub: Listener error: #{e.message}"
+            FastMcpPubsub.logger.error e.backtrace.join("\n")
+            sleep 1
+            retry
+          end
+        ensure
+          begin
+            @dedicated_connection&.exec("UNLISTEN #{channel}")
+            @dedicated_connection&.close
+          rescue StandardError => e
+            FastMcpPubsub.logger.error "FastMcpPubsub: Error during cleanup: #{e.message}"
+          end
+          @dedicated_connection = nil
         end
+      end
+
+      def create_dedicated_connection
+        db_config = ActiveRecord::Base.connection_db_config.configuration_hash
+        PG.connect(
+          host: db_config[:host] || "localhost",
+          port: db_config[:port] || 5432,
+          dbname: db_config[:database],
+          user: db_config[:username],
+          password: db_config[:password]
+        )
       end
 
       def handle_notification(_channel, pid, payload)
