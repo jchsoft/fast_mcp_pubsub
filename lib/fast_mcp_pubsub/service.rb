@@ -127,13 +127,16 @@ module FastMcpPubsub
 
       def create_dedicated_connection
         db_config = ActiveRecord::Base.connection_db_config.configuration_hash
-        PG.connect(
-          host: db_config[:host] || "localhost",
-          port: db_config[:port] || 5432,
+
+        conn_params = {
+          host: db_config[:host],
+          port: db_config[:port],
           dbname: db_config[:database],
           user: db_config[:username],
           password: db_config[:password]
-        )
+        }.compact
+
+        PG.connect(conn_params)
       end
 
       def handle_notification(pid, payload)
