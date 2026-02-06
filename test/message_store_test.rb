@@ -29,26 +29,30 @@ class TestMessageStore < Minitest::Test
     end
   end
 
-  def test_fetch_and_delete_returns_payload
+  def test_fetch_returns_payload
     test_uuid = "test-uuid-123"
     expected_payload = '{"test":"data"}'
 
-    # Mock select_value to return payload
-    ActiveRecord::Base.connection.stub :select_value, expected_payload do
-      result = @message_store.fetch_and_delete(test_uuid)
+    # Mock ensure_table_exists and select_value
+    @message_store.stub :ensure_table_exists, nil do
+      ActiveRecord::Base.connection.stub :select_value, expected_payload do
+        result = @message_store.fetch(test_uuid)
 
-      assert_equal expected_payload, result
+        assert_equal expected_payload, result
+      end
     end
   end
 
-  def test_fetch_and_delete_returns_nil_for_missing
+  def test_fetch_returns_nil_for_missing
     test_uuid = "missing-uuid"
 
-    # Mock select_value to return nil
-    ActiveRecord::Base.connection.stub :select_value, nil do
-      result = @message_store.fetch_and_delete(test_uuid)
+    # Mock ensure_table_exists and select_value
+    @message_store.stub :ensure_table_exists, nil do
+      ActiveRecord::Base.connection.stub :select_value, nil do
+        result = @message_store.fetch(test_uuid)
 
-      assert_nil result
+        assert_nil result
+      end
     end
   end
 
@@ -86,6 +90,9 @@ class TestMessageStore < Minitest::Test
   end
 
   def test_cleanup
+    # Set cached flag so cleanup actually runs
+    @message_store.instance_variable_set(:@table_exists, true)
+
     older_than = Time.now - 300
 
     mock_execute = Minitest::Mock.new
@@ -96,5 +103,15 @@ class TestMessageStore < Minitest::Test
     end
 
     mock_execute.verify
+  end
+
+  def test_cleanup_skips_if_table_not_exists
+    # Ensure cached flag is false
+    @message_store.instance_variable_set(:@table_exists, false)
+
+    # Should not call execute
+    ActiveRecord::Base.connection.stub :execute, ->(_) { raise "Should not be called" } do
+      @message_store.cleanup
+    end
   end
 end

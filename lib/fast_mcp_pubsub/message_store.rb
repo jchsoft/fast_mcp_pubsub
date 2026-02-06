@@ -14,13 +14,16 @@ module FastMcpPubsub
         id
       end
 
-      def fetch_and_delete(id)
+      def fetch(id)
+        ensure_table_exists
         ActiveRecord::Base.connection.select_value(
-          "DELETE FROM #{TABLE_NAME} WHERE id = #{quote(id)} RETURNING payload"
+          "SELECT payload FROM #{TABLE_NAME} WHERE id = #{quote(id)}"
         )
       end
 
       def cleanup(older_than: Time.now - 300)
+        return unless @table_exists
+
         ActiveRecord::Base.connection.execute(
           "DELETE FROM #{TABLE_NAME} WHERE created_at < #{quote(older_than.iso8601)}"
         )

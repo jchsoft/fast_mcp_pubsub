@@ -145,8 +145,8 @@ class TestService < Minitest::Test
 
     @service.singleton_class.prepend(mock_module)
 
-    # Mock MessageStore.fetch_and_delete
-    FastMcpPubsub::MessageStore.stub :fetch_and_delete, stored_message.to_json do
+    # Mock MessageStore.fetch
+    FastMcpPubsub::MessageStore.stub :fetch, stored_message.to_json do
       @service.send(:handle_notification, 123, payload)
     end
 
@@ -168,8 +168,8 @@ class TestService < Minitest::Test
 
     @service.singleton_class.prepend(mock_module)
 
-    # Mock MessageStore.fetch_and_delete returning nil (expired)
-    FastMcpPubsub::MessageStore.stub :fetch_and_delete, nil do
+    # Mock MessageStore.fetch returning nil (expired)
+    FastMcpPubsub::MessageStore.stub :fetch, nil do
       @service.send(:handle_notification, 123, payload)
     end
 

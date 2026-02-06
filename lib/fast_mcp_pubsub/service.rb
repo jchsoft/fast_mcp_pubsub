@@ -147,7 +147,7 @@ module FastMcpPubsub
 
           # Resolve DB reference if present
           if message.is_a?(Hash) && message["_pubsub_ref"]
-            stored_payload = MessageStore.fetch_and_delete(message["_pubsub_ref"])
+            stored_payload = MessageStore.fetch(message["_pubsub_ref"])
             return unless stored_payload # Already consumed or expired
 
             message = JSON.parse(stored_payload)
