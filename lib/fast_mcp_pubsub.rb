@@ -2,6 +2,7 @@
 
 require_relative "fast_mcp_pubsub/version"
 require_relative "fast_mcp_pubsub/configuration"
+require_relative "fast_mcp_pubsub/message_store"
 require_relative "fast_mcp_pubsub/service"
 
 # PostgreSQL NOTIFY/LISTEN clustering support for FastMcp RackTransport.

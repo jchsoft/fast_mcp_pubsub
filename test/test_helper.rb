@@ -66,6 +66,22 @@ module ActiveRecord
       def connection
         @connection ||= MockConnection.new
       end
+
+      def connection_db_config
+        MockConnectionDbConfig.new
+      end
+    end
+  end
+
+  class MockConnectionDbConfig
+    def configuration_hash
+      {
+        host: "localhost",
+        port: 5432,
+        database: "test_db",
+        username: "test_user",
+        password: "test_pass"
+      }
     end
   end
 
@@ -81,7 +97,7 @@ module ActiveRecord
 
   class MockConnection
     def execute(sql)
-      # Mock NOTIFY execution
+      # Mock NOTIFY execution and other SQL execution
     end
 
     def quote(str)
@@ -90,6 +106,17 @@ module ActiveRecord
 
     def raw_connection
       MockRawConnection.new
+    end
+
+    def table_exists?(_table_name)
+      false # Simulate table doesn't exist initially
+    end
+
+    def select_value(sql)
+      # Mock for fetch_and_delete
+      return unless sql.include?("DELETE FROM")
+
+      '{"test":"payload"}'
     end
   end
 

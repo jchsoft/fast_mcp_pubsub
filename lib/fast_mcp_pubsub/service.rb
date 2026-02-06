@@ -12,7 +12,7 @@ module FastMcpPubsub
       def broadcast(message)
         payload = message.to_json
 
-        payload_too_large?(payload) ? send_error_response(message, payload) : send_payload(payload)
+        payload_too_large?(payload) ? broadcast_via_store(payload) : send_payload(payload)
       rescue StandardError => e
         FastMcpPubsub.logger.error "FastMcpPubsub: Error broadcasting message: #{e.message}"
         raise
@@ -81,19 +81,11 @@ module FastMcpPubsub
         payload.bytesize > MAX_PAYLOAD_SIZE
       end
 
-      def send_error_response(message, payload)
-        FastMcpPubsub.logger.error "FastMcpPubsub: Payload too large (#{payload.bytesize} bytes > #{MAX_PAYLOAD_SIZE} bytes)"
-
-        error_message = {
-          jsonrpc: "2.0",
-          id: message[:id],
-          error: {
-            code: -32_001,
-            message: "Response too large for PostgreSQL NOTIFY. Try requesting smaller page size."
-          }
-        }
-
-        send_payload(error_message.to_json)
+      def broadcast_via_store(payload)
+        ref_id = MessageStore.store(payload)
+        ref_payload = { _pubsub_ref: ref_id }.to_json
+        FastMcpPubsub.logger.debug "FastMcpPubsub: Payload too large (#{payload.bytesize} bytes), stored as #{ref_id}"
+        send_payload(ref_payload)
       end
 
       def listen_loop
@@ -107,6 +99,9 @@ module FastMcpPubsub
 
           loop do
             break if @shutdown_requested
+
+            @cleanup_counter = (@cleanup_counter || 0) + 1
+            MessageStore.cleanup if (@cleanup_counter % 60).zero? # Every ~60s (1s per loop)
 
             @dedicated_connection.wait_for_notify(1) do |_channel, pid, payload|
               handle_notification(pid, payload)
@@ -147,20 +142,32 @@ module FastMcpPubsub
         begin
           message = JSON.parse(payload)
 
-          # Find active RackTransport instances and send to local clients
-          if defined?(FastMcp::Transports::RackTransport)
-            transports = transport_instances
-            FastMcpPubsub.logger.debug "FastMcpPubsub: Found #{transports.size} transport instances"
+          # Resolve DB reference if present
+          if message.is_a?(Hash) && message["_pubsub_ref"]
+            stored_payload = MessageStore.fetch_and_delete(message["_pubsub_ref"])
+            return unless stored_payload # Already consumed or expired
 
-            transports.each do |transport|
-              FastMcpPubsub.logger.debug "FastMcpPubsub: Sending message to transport #{transport.object_id}"
-              transport.send_local_message(message)
-            end
+            message = JSON.parse(stored_payload)
           end
+
+          deliver_to_transports(message)
         rescue JSON::ParserError => e
           FastMcpPubsub.logger.error "FastMcpPubsub: Invalid JSON payload: #{e.message}"
         rescue StandardError => e
           FastMcpPubsub.logger.error "FastMcpPubsub: Error handling notification: #{e.message}"
+        end
+      end
+
+      def deliver_to_transports(message)
+        # Find active RackTransport instances and send to local clients
+        return unless defined?(FastMcp::Transports::RackTransport)
+
+        transports = transport_instances
+        FastMcpPubsub.logger.debug "FastMcpPubsub: Found #{transports.size} transport instances"
+
+        transports.each do |transport|
+          FastMcpPubsub.logger.debug "FastMcpPubsub: Sending message to transport #{transport.object_id}"
+          transport.send_local_message(message)
         end
       end
 
