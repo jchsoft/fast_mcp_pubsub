@@ -71,7 +71,15 @@ module FastMcpPubsub
     end
 
     def web_server_environment?
-      defined?(Rails::Server) || defined?(Puma) || ENV["MCP_SERVER_AUTO_START"] == "true"
+      defined?(Rails::Server) || puma_cli_running? || ENV["MCP_SERVER_AUTO_START"] == "true"
+    end
+
+    def puma_cli_running?
+      # defined?(Puma) is true whenever Puma gem is loaded (even in test runner, rake tasks, etc.)
+      # Puma.cli_config is only set when Puma was actually started via CLI (rails server, puma command)
+      defined?(Puma) &&
+        Puma.respond_to?(:cli_config) &&
+        !Puma.cli_config.nil?
     end
 
     def cluster_mode?

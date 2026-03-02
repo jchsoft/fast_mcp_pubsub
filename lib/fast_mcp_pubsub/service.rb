@@ -54,6 +54,13 @@ module FastMcpPubsub
         end
 
         @listener_thread.join(5) # Wait max 5 seconds
+
+        # Force kill if still alive after timeout (e.g. stuck in PG.connect during reconnect)
+        if @listener_thread&.alive?
+          @listener_thread.kill
+          @listener_thread.join(1)
+        end
+
         @listener_thread = nil
 
         # Close dedicated connection

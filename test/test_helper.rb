@@ -165,3 +165,4 @@ end
 
 require "fast_mcp_pubsub"
 require "minitest/autorun"
+require "minitest/mock"
