@@ -9,7 +9,7 @@ class TestService < Minitest::Test
   end
 
   def teardown
-    @service.stop_listener if @service.listener_thread&.alive?
+    @service.stop_listener
     FastMcpPubsub.configuration = nil
   end
 
@@ -25,25 +25,20 @@ class TestService < Minitest::Test
     large_content = "x" * 8000
     message = { id: 1, method: "test", params: { content: large_content } }
 
-    # Mock the send_payload method to capture what gets sent
     sent_payloads = []
     stored_payloads = []
 
-    # Mock MessageStore
-    mock_module = Module.new do
-      define_method(:send_payload) do |payload|
-        sent_payloads << JSON.parse(payload)
-      end
-    end
-
-    @service.singleton_class.prepend(mock_module)
-
-    # Mock MessageStore.store
+    # Scoped stubs rather than a module prepended to the service's singleton
+    # class: a prepended module stays in front of that class for the rest of the
+    # process and outranks every later stub of the same method, so it silently
+    # disarms other tests' expectations depending on the order they run in.
     FastMcpPubsub::MessageStore.stub :store, lambda { |payload|
       stored_payloads << payload
       "test-uuid"
     } do
-      @service.broadcast(message)
+      @service.stub(:send_payload, ->(payload) { sent_payloads << JSON.parse(payload) }) do
+        @service.broadcast(message)
+      end
     end
 
     # Should have stored the payload
@@ -92,22 +87,14 @@ class TestService < Minitest::Test
     message = { id: 1, method: "test" }
     payload = message.to_json
 
-    # Mock transport instances
     mock_transport = Minitest::Mock.new
     parsed_message = JSON.parse(payload)
     mock_transport.expect(:send_local_message, nil, [parsed_message])
 
-    # Use a temporary module to avoid redefinition warnings
-    mock_module = Module.new do
-      define_method(:transport_instances) do
-        [mock_transport]
-      end
-    end
-
-    @service.singleton_class.prepend(mock_module)
-
     # Call handle_notification (private method)
-    @service.send(:handle_notification, 123, payload)
+    @service.stub(:transport_instances, [mock_transport]) do
+      @service.send(:handle_notification, 123, payload)
+    end
 
     mock_transport.verify
   end
@@ -132,22 +119,14 @@ class TestService < Minitest::Test
     payload = ref_message.to_json
     stored_message = { "id" => 1, "method" => "test", "result" => "data" }
 
-    # Mock transport instances
     mock_transport = Minitest::Mock.new
     mock_transport.expect(:send_local_message, nil, [stored_message])
 
-    # Use a temporary module to avoid redefinition warnings
-    mock_module = Module.new do
-      define_method(:transport_instances) do
-        [mock_transport]
-      end
-    end
-
-    @service.singleton_class.prepend(mock_module)
-
     # Mock MessageStore.fetch
     FastMcpPubsub::MessageStore.stub :fetch, stored_message.to_json do
-      @service.send(:handle_notification, 123, payload)
+      @service.stub(:transport_instances, [mock_transport]) do
+        @service.send(:handle_notification, 123, payload)
+      end
     end
 
     mock_transport.verify
@@ -160,17 +139,11 @@ class TestService < Minitest::Test
     # Mock transport instances - should not be called
     mock_transport = Minitest::Mock.new
 
-    mock_module = Module.new do
-      define_method(:transport_instances) do
-        [mock_transport]
-      end
-    end
-
-    @service.singleton_class.prepend(mock_module)
-
     # Mock MessageStore.fetch returning nil (expired)
     FastMcpPubsub::MessageStore.stub :fetch, nil do
-      @service.send(:handle_notification, 123, payload)
+      @service.stub(:transport_instances, [mock_transport]) do
+        @service.send(:handle_notification, 123, payload)
+      end
     end
 
     # Should not have called transport since message was expired

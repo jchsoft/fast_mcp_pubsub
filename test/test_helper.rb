@@ -137,9 +137,13 @@ module FastMcp
     class RackTransport
       attr_accessor :running
 
+      attr_reader :sse_clients, :endpoint_queries, :sent_messages
+
       def initialize
         @running = false
         @sent_messages = []
+        @sse_clients = {}
+        @endpoint_queries = []
       end
 
       def send_message(message)
@@ -154,10 +158,29 @@ module FastMcp
         @running
       end
 
-      attr_reader :sent_messages
+      # Mirrors FastMcp's own registry so the targeted send has somewhere to write.
+      def register_sse_client(client_id, stream, mutex = nil)
+        @sse_clients[client_id] = { stream: stream, mutex: mutex || Mutex.new }
+      end
+
+      def unregister_sse_client(client_id)
+        @sse_clients.delete(client_id)
+      end
 
       def clear_messages
         @sent_messages.clear
+      end
+
+      private
+
+      # The two private methods the patch wraps. Both record what they were
+      # handed, which is what the tests assert on.
+      def handle_message_request_with_server(request, server)
+        [request, server, FastMcpPubsub::CurrentClient.id]
+      end
+
+      def setup_sse_connection(_client_id, _io, env)
+        @endpoint_queries << env["QUERY_STRING"]
       end
     end
   end

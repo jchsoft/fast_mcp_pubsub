@@ -104,6 +104,28 @@ FastMcpPubsub::Service.listener_thread&.alive?
 3. **Listener threads**: Each worker has a dedicated listener thread
 4. **Local delivery**: Messages are delivered to local SSE clients in each worker
 
+### Addressing
+
+A JSON-RPC **response** is delivered only to the client that asked for it; a
+**notification** still reaches everyone. FastMcp answers over SSE and writes each
+message to every open stream, so without addressing one client's response lands
+in every other client's session — and the only thing separating them is
+JSON-RPC id matching, which collides as soon as two clients open fresh sessions
+at the same moment and both start counting ids from 1.
+
+The gem closes that by carrying FastMcp's own `client_id` end to end:
+
+- the endpoint URL handed to a client on connect carries its `client_id`
+- the client's POSTs come back with it, and it is held in `CurrentClient` for the
+  length of the request
+- `send_message` stamps it onto the NOTIFY envelope as `_pubsub_target`
+- each worker delivers a targeted message only to that client, and ignores one
+  addressed to a client another worker holds
+
+A message with no target — a genuine notification, or a request from a client
+that supplied no id — falls back to the previous fan-out, so older clients keep
+working.
+
 ## Configuration Options
 
 | Option | Default | Description |

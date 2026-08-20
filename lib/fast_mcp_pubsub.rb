@@ -2,6 +2,7 @@
 
 require_relative "fast_mcp_pubsub/version"
 require_relative "fast_mcp_pubsub/configuration"
+require_relative "fast_mcp_pubsub/current_client"
 require_relative "fast_mcp_pubsub/message_store"
 require_relative "fast_mcp_pubsub/service"
 
@@ -31,5 +32,6 @@ module FastMcpPubsub
 end
 
 # Load patch after module is fully defined
+require_relative "fast_mcp_pubsub/addressing_patch"
 require_relative "fast_mcp_pubsub/rack_transport_patch"
 require_relative "fast_mcp_pubsub/railtie" if defined?(Rails)

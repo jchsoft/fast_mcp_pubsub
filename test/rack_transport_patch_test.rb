@@ -41,7 +41,7 @@ class TestRackTransportPatch < Minitest::Test
     FastMcpPubsub.configure { |c| c.enabled = true }
 
     # Use instance-specific mock instead of global one
-    def @transport.broadcast_with_fallback(message)
+    def @transport.broadcast_with_fallback(message, _client_id = nil)
       @broadcast_called = true
       raise StandardError, "Simulated broadcast error" # Force fallback
     rescue StandardError

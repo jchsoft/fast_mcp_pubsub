@@ -9,10 +9,17 @@ module FastMcpPubsub
       attr_reader :listener_thread, :dedicated_connection
       attr_accessor :shutdown_requested
 
-      def broadcast(message)
-        payload = message.to_json
+      # Publishes one MCP message to the cluster.
+      #
+      # client_id names the SSE client the message answers; nil means it is for
+      # everyone, which is what a genuine notification is. A response carries an
+      # id because every worker receives every NOTIFY, and without one the worker
+      # holding an unrelated session would write this answer into it.
+      def broadcast(message, client_id = nil)
+        envelope = envelope_for(message)
+        envelope[:_pubsub_target] = client_id if client_id
 
-        payload_too_large?(payload) ? broadcast_via_store(payload) : send_payload(payload)
+        send_payload(envelope.to_json)
       rescue StandardError => e
         FastMcpPubsub.logger.error "FastMcpPubsub: Error broadcasting message: #{e.message}"
         raise
@@ -41,7 +48,10 @@ module FastMcpPubsub
       end
 
       def stop_listener
-        return unless @listener_thread&.alive?
+        # A thread that has already died on its own still leaves its reference
+        # behind, and every caller reads that reference as "a listener is
+        # running". Clearing it is part of stopping, not a separate errand.
+        return @listener_thread = nil unless @listener_thread&.alive?
 
         FastMcpPubsub.logger.info "FastMcpPubsub: Stopping listener thread for PID #{Process.pid}"
         @shutdown_requested = true
@@ -88,11 +98,16 @@ module FastMcpPubsub
         payload.bytesize > MAX_PAYLOAD_SIZE
       end
 
-      def broadcast_via_store(payload)
+      # Wraps the message for the wire: inline when it fits in a NOTIFY, a
+      # database reference when it does not. The envelope is also what gives the
+      # target somewhere to live.
+      def envelope_for(message)
+        payload = message.to_json
+        return { _pubsub_message: message } unless payload_too_large?(payload)
+
         ref_id = MessageStore.store(payload)
-        ref_payload = { _pubsub_ref: ref_id }.to_json
         FastMcpPubsub.logger.debug "FastMcpPubsub: Payload too large (#{payload.bytesize} bytes), stored as #{ref_id}"
-        send_payload(ref_payload)
+        { _pubsub_ref: ref_id }
       end
 
       def listen_loop
@@ -150,17 +165,11 @@ module FastMcpPubsub
         FastMcpPubsub.logger.debug "FastMcpPubsub: Received notification from PID #{pid}: #{payload}"
 
         begin
-          message = JSON.parse(payload)
+          envelope = JSON.parse(payload)
+          message = unwrap(envelope)
+          return unless message # Reference already expired
 
-          # Resolve DB reference if present
-          if message.is_a?(Hash) && message["_pubsub_ref"]
-            stored_payload = MessageStore.fetch(message["_pubsub_ref"])
-            return unless stored_payload # Already consumed or expired
-
-            message = JSON.parse(stored_payload)
-          end
-
-          deliver_to_transports(message)
+          deliver_to_transports(message, target_of(envelope))
         rescue JSON::ParserError => e
           FastMcpPubsub.logger.error "FastMcpPubsub: Invalid JSON payload: #{e.message}"
         rescue StandardError => e
@@ -168,7 +177,25 @@ module FastMcpPubsub
         end
       end
 
-      def deliver_to_transports(message)
+      # The client this message is addressed to, or nil for a fan-out.
+      def target_of(envelope)
+        envelope["_pubsub_target"] if envelope.is_a?(Hash)
+      end
+
+      # Unwraps the three shapes that arrive on the channel: an inline message, a
+      # database reference for one too large to fit in a NOTIFY, and a bare
+      # JSON-RPC message with no envelope at all — which is what a worker still
+      # running an older gem publishes during a rolling restart.
+      def unwrap(envelope)
+        return envelope unless envelope.is_a?(Hash)
+        return envelope["_pubsub_message"] if envelope.key?("_pubsub_message")
+        return envelope unless envelope.key?("_pubsub_ref")
+
+        stored_payload = MessageStore.fetch(envelope["_pubsub_ref"])
+        stored_payload && JSON.parse(stored_payload)
+      end
+
+      def deliver_to_transports(message, client_id = nil)
         # Find active RackTransport instances and send to local clients
         return unless defined?(FastMcp::Transports::RackTransport)
 
@@ -177,6 +204,8 @@ module FastMcpPubsub
 
         transports.each do |transport|
           FastMcpPubsub.logger.debug "FastMcpPubsub: Sending message to transport #{transport.object_id}"
+          next transport.send_local_message_to(client_id, message) if client_id
+
           transport.send_local_message(message)
         end
       end
