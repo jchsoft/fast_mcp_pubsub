@@ -36,6 +36,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bare, un-enveloped payloads from a worker still running an older gem are
   recognised and delivered, so a rolling restart does not drop messages.
 
+## [1.3.3] - 2026-03-02
+
+### Fixed
+- The listener no longer starts under the test runner or a rake task. The
+  Railtie checked `defined?(Puma)`, which is true whenever the gem is merely
+  loaded; it now checks `Puma.cli_config`, so only a Puma actually launched via
+  its CLI counts.
+- `stop_listener` force-kills the listener thread after the five-second join,
+  so a process can always exit even when `PG.connect` blocks during a reconnect.
+
+## [1.3.2] - 2026-02-06
+
+### Fixed
+- Multi-worker race on database-stored payloads. `MessageStore` deleted the row
+  as it read it, so of all the workers a NOTIFY woke, exactly one got the
+  payload — and when that was a worker holding no SSE clients, the message was
+  simply lost and the client timed out. Reading no longer deletes; the periodic
+  cleanup handles removal. Cleanup also guards against a missing table.
+
+## [1.3.1] - 2026-02-06
+
+### Fixed
+- Unix socket connections with peer authentication. Hardcoded host and port
+  defaults forced a TCP connection; only the parameters actually present in the
+  Rails config are passed to `PG.connect` now, so an absent host means the
+  socket, as production expects.
+
+## [1.3.0] - 2026-02-06
+
+### Added
+- Database overflow for responses larger than PostgreSQL NOTIFY's 8000-byte
+  limit. Payloads under 7800 bytes still go straight down the channel; larger
+  ones are stored via the new `MessageStore` and the NOTIFY carries a UUID
+  reference. Stored rows are cleaned up roughly every 60 seconds by the listener.
+
+## [1.2.0] - 2026-01-29
+
+### Fixed
+- "Lost synchronization with server" crashes during development hot-reload. The
+  listener took its raw PostgreSQL connection from the ActiveRecord pool and so
+  could share it with the main Rails thread. It now opens a dedicated connection
+  outside the pool.
+
+### Changed
+- Shutdown is cooperative — a `@shutdown_requested` flag and a one-second
+  `wait_for_notify` timeout instead of `Thread.kill` — and reloader hooks stop
+  and restart the listener across a hot-reload.
+
+## [1.1.0] - 2025-08-20
+
+### Changed
+- **Breaking.** Cluster mode is configured by hand: add
+  `FastMcpPubsub::Service.start_listener` to your `on_worker_boot` hook. The
+  automatic worker detection of 1.0.3–1.0.5 never became reliable and is gone;
+  the Railtie now only keeps the listener out of the master process.
+
+## [1.0.5] - 2025-08-20
+
+### Fixed
+- Worker detection reworked around an `after_initialize` callback, replacing the
+  `Puma.cli_config` hook registration that did not fire dependably.
+
+## [1.0.4] - 2025-08-20
+
+### Fixed
+- `NoMethodError` on Puma's `UserFileDefaultOptions`, which has no `dig`.
+
+## [1.0.3] - 2025-08-20
+
+### Fixed
+- The listener started in the master process rather than the workers. Cluster
+  mode is detected and worker boot hooks registered so it starts only in a
+  worker.
+
+## [1.0.2] - 2025-08-20
+
+### Changed
+- Extensive debug logging around listener startup, added to diagnose workers
+  that never began listening in production cluster mode.
+
+## [1.0.1] - 2025-08-20
+
+### Fixed
+- No messages reached SSE clients in production. `transport_instances` filtered
+  on `running?`, which production transports never set, so the list came back
+  empty. The filter is gone.
+
 ## [1.0.0] - 2025-08-19
 
 ### Added
