@@ -6,6 +6,8 @@ module FastMcpPubsub
     MAX_PAYLOAD_SIZE = 7800 # PostgreSQL NOTIFY limit is 8000 bytes, leave some margin
 
     class << self
+      include Delivery
+
       attr_reader :listener_thread, :dedicated_connection
       attr_accessor :shutdown_requested
 
@@ -56,34 +58,42 @@ module FastMcpPubsub
         FastMcpPubsub.logger.info "FastMcpPubsub: Stopping listener thread for PID #{Process.pid}"
         @shutdown_requested = true
 
-        # Cancel wait_for_notify to wake up the thread
-        begin
-          @dedicated_connection&.cancel
-        rescue StandardError
-          nil
-        end
+        wake_listener
+        join_listener
+        discard_dedicated_connection
+        @shutdown_requested = false
+      end
 
-        @listener_thread.join(5) # Wait max 5 seconds
+      private
 
-        # Force kill if still alive after timeout (e.g. stuck in PG.connect during reconnect)
+      # Cancels the in-flight wait_for_notify so the thread reaches its next
+      # shutdown check instead of sitting out the rest of the timeout.
+      def wake_listener
+        @dedicated_connection&.cancel
+      rescue StandardError
+        nil
+      end
+
+      # Five seconds to notice, then it is taken down: a thread stuck inside
+      # PG.connect during a reconnect never notices on its own.
+      def join_listener
+        @listener_thread.join(5)
+
         if @listener_thread&.alive?
           @listener_thread.kill
           @listener_thread.join(1)
         end
 
         @listener_thread = nil
-
-        # Close dedicated connection
-        begin
-          @dedicated_connection&.close
-        rescue StandardError
-          nil
-        end
-        @dedicated_connection = nil
-        @shutdown_requested = false
       end
 
-      private
+      def discard_dedicated_connection
+        @dedicated_connection&.close
+      rescue StandardError
+        nil
+      ensure
+        @dedicated_connection = nil
+      end
 
       def send_payload(payload)
         channel = FastMcpPubsub.config.channel_name
@@ -110,41 +120,62 @@ module FastMcpPubsub
         { _pubsub_ref: ref_id }
       end
 
+      # The listener thread's whole life. `retry` re-enters the begin block
+      # without running the ensure, which is what lets a reconnect keep the
+      # LISTEN it is about to re-establish — so the split below has to keep the
+      # begin/rescue/ensure here rather than push it into a helper.
       def listen_loop
         channel = FastMcpPubsub.config.channel_name
 
         begin
-          @dedicated_connection = create_dedicated_connection
-
-          FastMcpPubsub.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
-          @dedicated_connection.exec("LISTEN #{channel}")
-
-          loop do
-            break if @shutdown_requested
-
-            @cleanup_counter = (@cleanup_counter || 0) + 1
-            MessageStore.cleanup if (@cleanup_counter % 60).zero? # Every ~60s (1s per loop)
-
-            @dedicated_connection.wait_for_notify(1) do |_channel, pid, payload|
-              handle_notification(pid, payload)
-            end
-          end
+          open_listener(channel)
+          consume_notifications
         rescue StandardError => e
-          unless @shutdown_requested
-            FastMcpPubsub.logger.error "FastMcpPubsub: Listener error: #{e.message}"
-            FastMcpPubsub.logger.error e.backtrace.join("\n")
-            sleep 1
-            retry
-          end
+          retry if listener_should_recover?(e)
         ensure
-          begin
-            @dedicated_connection&.exec("UNLISTEN #{channel}")
-            @dedicated_connection&.close
-          rescue StandardError => e
-            FastMcpPubsub.logger.error "FastMcpPubsub: Error during cleanup: #{e.message}"
-          end
-          @dedicated_connection = nil
+          close_listener(channel)
         end
+      end
+
+      def open_listener(channel)
+        @dedicated_connection = create_dedicated_connection
+
+        FastMcpPubsub.logger.info "FastMcpPubsub: Listening on #{channel} for PID #{Process.pid}"
+        @dedicated_connection.exec("LISTEN #{channel}")
+      end
+
+      def consume_notifications
+        loop do
+          break if @shutdown_requested
+
+          @cleanup_counter = (@cleanup_counter || 0) + 1
+          MessageStore.cleanup if (@cleanup_counter % 60).zero? # Every ~60s (1s per loop)
+
+          @dedicated_connection.wait_for_notify(1) do |_channel, pid, payload|
+            handle_notification(pid, payload)
+          end
+        end
+      end
+
+      # Reports whether the loop should come back up, having logged and paused if
+      # so. A shutdown in progress is not an error to recover from — it is the
+      # exit, and the error is the connection being cancelled out from under us.
+      def listener_should_recover?(error)
+        return false if @shutdown_requested
+
+        FastMcpPubsub.logger.error "FastMcpPubsub: Listener error: #{error.message}"
+        FastMcpPubsub.logger.error error.backtrace.join("\n")
+        sleep 1
+        true
+      end
+
+      def close_listener(channel)
+        @dedicated_connection&.exec("UNLISTEN #{channel}")
+        @dedicated_connection&.close
+      rescue StandardError => e
+        FastMcpPubsub.logger.error "FastMcpPubsub: Error during cleanup: #{e.message}"
+      ensure
+        @dedicated_connection = nil
       end
 
       def create_dedicated_connection
@@ -159,62 +190,6 @@ module FastMcpPubsub
         }.compact
 
         PG.connect(conn_params)
-      end
-
-      def handle_notification(pid, payload)
-        FastMcpPubsub.logger.debug "FastMcpPubsub: Received notification from PID #{pid}: #{payload}"
-
-        begin
-          envelope = JSON.parse(payload)
-          message = unwrap(envelope)
-          return unless message # Reference already expired
-
-          deliver_to_transports(message, target_of(envelope))
-        rescue JSON::ParserError => e
-          FastMcpPubsub.logger.error "FastMcpPubsub: Invalid JSON payload: #{e.message}"
-        rescue StandardError => e
-          FastMcpPubsub.logger.error "FastMcpPubsub: Error handling notification: #{e.message}"
-        end
-      end
-
-      # The client this message is addressed to, or nil for a fan-out.
-      def target_of(envelope)
-        envelope["_pubsub_target"] if envelope.is_a?(Hash)
-      end
-
-      # Unwraps the three shapes that arrive on the channel: an inline message, a
-      # database reference for one too large to fit in a NOTIFY, and a bare
-      # JSON-RPC message with no envelope at all — which is what a worker still
-      # running an older gem publishes during a rolling restart.
-      def unwrap(envelope)
-        return envelope unless envelope.is_a?(Hash)
-        return envelope["_pubsub_message"] if envelope.key?("_pubsub_message")
-        return envelope unless envelope.key?("_pubsub_ref")
-
-        stored_payload = MessageStore.fetch(envelope["_pubsub_ref"])
-        stored_payload && JSON.parse(stored_payload)
-      end
-
-      def deliver_to_transports(message, client_id = nil)
-        # Find active RackTransport instances and send to local clients
-        return unless defined?(FastMcp::Transports::RackTransport)
-
-        transports = transport_instances
-        FastMcpPubsub.logger.debug "FastMcpPubsub: Found #{transports.size} transport instances"
-
-        transports.each do |transport|
-          FastMcpPubsub.logger.debug "FastMcpPubsub: Sending message to transport #{transport.object_id}"
-          next transport.send_local_message_to(client_id, message) if client_id
-
-          transport.send_local_message(message)
-        end
-      end
-
-      def transport_instances
-        # Find all RackTransport instances - don't filter by running? since it's not reliably implemented
-        ObjectSpace.each_object(FastMcp::Transports::RackTransport).to_a
-      rescue StandardError
-        []
       end
     end
   end
