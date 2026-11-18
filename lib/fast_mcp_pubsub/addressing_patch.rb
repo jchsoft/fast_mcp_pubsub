@@ -3,6 +3,10 @@
 require "cgi"
 
 module FastMcpPubsub
+  # Raised when a JSON-RPC response is sent with no client in scope. Delivering
+  # it anyway would mean writing it to every connected SSE client.
+  class UnaddressedResponseError < Error; end
+
   # The half of the RackTransport patch that makes a response reachable by the one
   # client that asked for it.
   #
@@ -16,6 +20,10 @@ module FastMcpPubsub
   # back on its POSTs (the capture), and have somewhere to be delivered to (the
   # targeted send).
   module AddressingPatch
+    # The members that make a JSON-RPC message a response rather than a
+    # notification or a request.
+    RESPONSE_KEYS = %w[result error].freeze
+
     def self.apply!
       add_targeted_send
       add_sse_writer
@@ -65,6 +73,11 @@ module FastMcpPubsub
     # Records which client the POST belongs to, so send_message can address the
     # response FastMcp is about to write.
     #
+    # A POST without a client_id is refused before it runs. Every endpoint the
+    # server hands out carries one, so such a POST comes from a client that
+    # ignored its endpoint, and the only place its response could go is every
+    # open stream: one client's data in everybody's session.
+    #
     # request.GET rather than request.params on purpose: params merges the POST
     # body, and reading the body here would leave nothing for the JSON parse that
     # follows.
@@ -76,11 +89,17 @@ module FastMcpPubsub
         alias_method :handle_message_request_without_pubsub, :handle_message_request_with_server
 
         define_method(:handle_message_request_with_server) do |request, server|
-          FastMcpPubsub::CurrentClient.with(request.GET["client_id"]) do
-            handle_message_request_without_pubsub(request, server)
-          end
+          client_id = request.GET["client_id"]
+          return missing_client_id_response(request) if client_id.to_s.empty?
+
+          FastMcpPubsub::CurrentClient.with(client_id) { handle_message_request_without_pubsub(request, server) }
         end
-        private :handle_message_request_with_server
+
+        define_method(:missing_client_id_response) do |request|
+          FastMcpPubsub.logger.warn "FastMcpPubsub: Refused #{request.request_method} #{request.path} without client_id from #{request.ip} (#{request.user_agent})"
+          json_rpc_error_response(400, -32_600, "Invalid Request: client_id is missing; POST to the endpoint URL the SSE stream sent")
+        end
+        private :handle_message_request_with_server, :missing_client_id_response
       end
     end
 
@@ -98,11 +117,42 @@ module FastMcpPubsub
         alias_method :setup_sse_connection_without_pubsub, :setup_sse_connection
 
         define_method(:setup_sse_connection) do |client_id, io, env|
+          FastMcpPubsub::AddressingPatch.apply_write_timeout(io)
           query = FastMcpPubsub::AddressingPatch.query_with_client_id(env["QUERY_STRING"], client_id)
           setup_sse_connection_without_pubsub(client_id, io, env.merge("QUERY_STRING" => query))
         end
         private :setup_sse_connection
       end
+    end
+
+    # Bounds how long a write to one SSE client may block. A client that vanished
+    # without closing its TCP connection otherwise blocks the writer until TCP
+    # gives up (56 s in production), and that writer is the worker's PubSub
+    # listener thread, so every SSE response on the worker waits behind it.
+    #
+    # A blocked write then raises IO::TimeoutError, an IOError, which
+    # send_local_message_to and FastMcp's keep-alive loop already treat as a
+    # disconnect. IO#timeout= exists since Ruby 3.2; an IO without it is logged
+    # rather than quietly left unbounded.
+    def self.apply_write_timeout(io)
+      if io.respond_to?(:timeout=)
+        io.timeout = FastMcpPubsub.config.sse_write_timeout
+      else
+        FastMcpPubsub.logger.warn "FastMcpPubsub: #{io.class} takes no write timeout; a vanished SSE client can block its writer"
+      end
+    end
+
+    # A JSON-RPC response belongs to the client whose request produced it. With no
+    # client in scope the only delivery left is every open stream, so the
+    # response is refused loudly instead. Notifications and server-to-client
+    # requests carry a method rather than a result, and still fan out.
+    def self.ensure_addressed!(message, client_id)
+      return if client_id
+
+      fields = message.is_a?(String) ? JSON.parse(message) : message
+      return unless fields.is_a?(Hash) && fields.keys.map(&:to_s).intersect?(RESPONSE_KEYS)
+
+      raise UnaddressedResponseError, "JSON-RPC response id=#{(fields[:id] || fields["id"]).inspect} has no client in scope; it would reach every SSE client"
     end
 
     # Appends client_id to an SSE query string, leaving a client that named its

@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-11-18
+
+### Fixed
+- **A client that vanished no longer stalls every SSE response on its worker.**
+  The hijacked SSE socket had no write timeout, so a write to a client that
+  disappeared without closing its TCP connection blocked until TCP gave up
+  (56 s observed in production). That write runs on the worker's PubSub listener
+  thread, so every response for that worker waited behind it, and FastMcp's
+  keep-alive thread blocked the same way. The socket now gets `IO#timeout`
+  (`sse_write_timeout`, 10 s by default); a blocked write raises
+  `IO::TimeoutError`, and the client is unregistered as disconnected.
+- **A response with no client in scope is no longer fanned out.** A POST to the
+  messages endpoint without `client_id` left `CurrentClient` empty, and its
+  response went to every SSE client on every worker. Such a POST is now refused
+  with HTTP 400 (JSON-RPC `-32600`) before it runs, and logged with the caller's
+  IP and user agent. Every endpoint the server hands out carries `client_id`, so
+  only a client that ignored its endpoint is affected.
+- With PubSub disabled, an addressed response went to every local SSE client;
+  it now goes only to its own client, as it does with PubSub enabled.
+
+### Added
+- `sse_write_timeout` configuration option (seconds, default `10`, `nil` for no
+  timeout). An IO that takes no timeout (Ruby < 3.2) is logged as a warning.
+- `FastMcpPubsub::UnaddressedResponseError`, raised when a JSON-RPC response
+  (a message with `result` or `error`) is sent with no client in scope. It is
+  never written to any client. Notifications and server-to-client requests
+  still fan out.
+
 ## [1.4.0] - 2026-08-20
 
 ### Fixed

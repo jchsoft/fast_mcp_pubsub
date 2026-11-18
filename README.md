@@ -58,6 +58,7 @@ FastMcpPubsub.configure do |config|
   config.channel_name = 'my_custom_channel' # Custom PostgreSQL NOTIFY channel
   config.auto_start = true                  # Start listener automatically (default: true)
   config.connection_pool_size = 10          # Database connection pool size
+  config.sse_write_timeout = 10             # Seconds a write to one SSE client may block
 end
 ```
 
@@ -122,9 +123,21 @@ The gem closes that by carrying FastMcp's own `client_id` end to end:
 - each worker delivers a targeted message only to that client, and ignores one
   addressed to a client another worker holds
 
-A message with no target — a genuine notification, or a request from a client
-that supplied no id — falls back to the previous fan-out, so older clients keep
-working.
+A notification (or a server-to-client request) has no target and still fans
+out. A response never does:
+
+- a POST without `client_id` is refused with HTTP 400 before it runs, and logged
+  with the caller's IP and user agent
+- a response sent with no client in scope raises
+  `FastMcpPubsub::UnaddressedResponseError` and is written to no client
+
+### Write timeout
+
+Each SSE socket gets `IO#timeout = sse_write_timeout`. A client that vanished
+without closing its TCP connection would otherwise block a write until TCP gives
+up, and that write runs on the worker's PubSub listener thread, so every SSE
+response on the worker would wait behind it. With the timeout, the blocked write
+raises `IO::TimeoutError` and the client is unregistered.
 
 ## Configuration Options
 
@@ -134,6 +147,7 @@ working.
 | `channel_name` | `'mcp_broadcast'` | PostgreSQL NOTIFY channel name |
 | `auto_start` | `true` | Start listener automatically |
 | `connection_pool_size` | `5` | Database connection pool size |
+| `sse_write_timeout` | `10` | Seconds a write to one SSE client may block before the client counts as gone; `nil` for no timeout |
 
 **Note**: Logging is handled automatically via `FastMcpPubsub.logger` which returns `Rails.logger`.
 
