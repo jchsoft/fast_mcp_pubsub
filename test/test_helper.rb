@@ -137,13 +137,14 @@ module FastMcp
     class RackTransport
       attr_accessor :running
 
-      attr_reader :sse_clients, :endpoint_queries, :sent_messages
+      attr_reader :sse_clients, :endpoint_queries, :sent_messages, :handled_requests
 
       def initialize
         @running = false
         @sent_messages = []
         @sse_clients = {}
         @endpoint_queries = []
+        @handled_requests = []
       end
 
       def send_message(message)
@@ -176,11 +177,17 @@ module FastMcp
       # The two private methods the patch wraps. Both record what they were
       # handed, which is what the tests assert on.
       def handle_message_request_with_server(request, server)
+        @handled_requests << request
         [request, server, FastMcpPubsub::CurrentClient.id]
       end
 
       def setup_sse_connection(_client_id, _io, env)
         @endpoint_queries << env["QUERY_STRING"]
+      end
+
+      # FastMcp's own JSON-RPC error response, which the patch answers with.
+      def json_rpc_error_response(http_status, code, message, id = nil)
+        [http_status, { "Content-Type" => "application/json" }, [JSON.generate({ jsonrpc: "2.0", error: { code: code, message: message }, id: id })]]
       end
     end
   end
@@ -189,3 +196,48 @@ end
 require "fast_mcp_pubsub"
 require "minitest/autorun"
 require "minitest/mock"
+
+# Records what was written to one client's SSE stream.
+class FakeSseStream
+  attr_reader :writes
+
+  def initialize
+    @writes = []
+  end
+
+  def write(data)
+    @writes << data
+  end
+
+  def flush; end
+
+  def closed?
+    false
+  end
+end
+
+# Collects the NOTIFY payloads Service.broadcast would send.
+module BroadcastCapture
+  private
+
+  def capture_payloads(&)
+    payloads = []
+    FastMcpPubsub::Service.stub(:send_payload, ->(payload) { payloads << payload }, &)
+    payloads
+  end
+end
+
+# Returns what FastMcpPubsub.logger wrote while the block ran.
+module LogCapture
+  private
+
+  def capture_log
+    previous = Rails.logger
+    log = StringIO.new
+    Rails.logger = Logger.new(log)
+    yield
+    log.string
+  ensure
+    Rails.logger = previous
+  end
+end

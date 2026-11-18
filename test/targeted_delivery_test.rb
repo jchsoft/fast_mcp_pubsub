@@ -8,24 +8,7 @@ require "test_helper"
 # the moment two clients open fresh sessions at the same minute and both start
 # counting from 1.
 class TestTargetedDelivery < Minitest::Test
-  # Records what was written to one client's stream.
-  class FakeStream
-    attr_reader :writes
-
-    def initialize
-      @writes = []
-    end
-
-    def write(data)
-      @writes << data
-    end
-
-    def flush; end
-
-    def closed?
-      false
-    end
-  end
+  include BroadcastCapture
 
   def setup
     FastMcpPubsub.configuration = nil
@@ -92,8 +75,8 @@ class TestTargetedDelivery < Minitest::Test
   end
 
   def test_targeted_send_reaches_only_the_named_client
-    mine = FakeStream.new
-    theirs = FakeStream.new
+    mine = FakeSseStream.new
+    theirs = FakeSseStream.new
     @transport.register_sse_client("client-a", mine)
     @transport.register_sse_client("client-b", theirs)
 
@@ -160,12 +143,6 @@ class TestTargetedDelivery < Minitest::Test
   end
 
   private
-
-  def capture_payloads(&)
-    payloads = []
-    FastMcpPubsub::Service.stub(:send_payload, ->(payload) { payloads << payload }, &)
-    payloads
-  end
 
   def deliver(transport, payload)
     FastMcpPubsub::Service.stub(:transport_instances, [transport]) do

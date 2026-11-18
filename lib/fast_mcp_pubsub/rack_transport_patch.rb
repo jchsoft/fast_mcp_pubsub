@@ -47,9 +47,11 @@ module FastMcpPubsub
         alias_method :send_message_original, :send_message if method_defined?(:send_message)
 
         define_method(:send_message) do |message|
-          return send_local_message(message) unless FastMcpPubsub.config.enabled
+          client_id = FastMcpPubsub::CurrentClient.id
+          FastMcpPubsub::AddressingPatch.ensure_addressed!(message, client_id)
+          return broadcast_with_fallback(message, client_id) if FastMcpPubsub.config.enabled
 
-          broadcast_with_fallback(message, FastMcpPubsub::CurrentClient.id)
+          deliver_locally(message, client_id)
         end
 
         alias_method :send_message_with_pubsub, :send_message
@@ -65,11 +67,17 @@ module FastMcpPubsub
           FastMcpPubsub::Service.broadcast(message, client_id)
         rescue StandardError => e
           FastMcpPubsub.logger.error "RackTransport: Error broadcasting message: #{e.message}"
-          # An addressed message stays addressed even when the cluster hop fails.
-          # Falling back to the fan-out would answer every other open session with
-          # this client's data, which is the failure the addressing exists to end.
+          deliver_locally(message, client_id)
+        end
+
+        # An addressed message stays addressed without the cluster hop too: when
+        # PubSub is disabled or the broadcast fails. Falling back to the fan-out
+        # would answer every other open session with this client's data, which is
+        # the failure the addressing exists to end.
+        define_method(:deliver_locally) do |message, client_id|
           client_id ? send_local_message_to(client_id, message) : send_local_message(message)
         end
+        private :deliver_locally
       end
     end
 
